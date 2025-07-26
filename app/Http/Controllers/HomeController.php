@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Family;
 use App\Models\FinancialBalance;
@@ -32,8 +33,7 @@ class HomeController extends Controller
         } else {
             $period = Carbon::now()->startOfMonth();
         }
-        // trasforma in stringa '2025-07-01'
-        $periodDate = $period->toDateString();
+        $periodDate   = $period->toDateString();
         $periodString = $period->format('Y-m');
 
         // 2) Trova la famiglia
@@ -99,7 +99,7 @@ class HomeController extends Controller
             ]);
         }
 
-        // 5) Calcoli
+        // 5) Calcoli saldi
         $total  = $balance->bank_balance
                  + $balance->other_accounts
                  + $balance->cash
@@ -113,7 +113,7 @@ class HomeController extends Controller
         // 6) Ultimo snapshot globale
         $latestMonth = FinancialBalance::where('user_id',   $user->id)
             ->where('family_id', $family->id ?? 0)
-            ->max('accounting_month'); // restituisce '2025-07-01'
+            ->max('accounting_month');
 
         if ($latestMonth) {
             $latestBalance = FinancialBalance::where('user_id', $user->id)
@@ -125,83 +125,80 @@ class HomeController extends Controller
             $latestBalance = null;
         }
 
-        $latestTotal  = $latestBalance
-                      ? (
+        $latestTotal  = $latestBalance ? (
                           $latestBalance->bank_balance
                         + $latestBalance->other_accounts
                         + $latestBalance->cash
                         + $latestBalance->insurances
                         + $latestBalance->investments
                         + $latestBalance->debt_credit
-                        )
-                      : 0;
-        $latestLiquid = $latestBalance
-                      ? (
+                        ) : 0;
+        $latestLiquid = $latestBalance ? (
                           $latestBalance->bank_balance
                         + $latestBalance->other_accounts
                         + $latestBalance->cash
-                        )
-                      : 0;
+                        ) : 0;
 
-        // 7) Carica categorie
+        // 7) Carica categorie per budget mensile
         $categories = BudgetCategory::orderBy('sort_order')->get();
 
-        // 8) Allocazioni per mese
-        $allocs = IncomeAllocation::whereHas('income', function($q) use ($user, $family) {
-                    $q->where('user_id',   $user->id)
-                      ->where('family_id', $family->id ?? 0);
-                })
-                ->get()
-                ->groupBy(function($a) {
-                    return substr($a->income->date, 0, 7);
-                });
+        // 8) Calcolo entrate/uscite mensili per categoria
+        $incomeByCategory  = [];
+        $expenseByCategory = [];
 
-        // 9) Mesi Gen–Dic
-        $year       = now()->year;
-        $yearMonths = collect(range(1,12))
-            ->mapWithKeys(function($m) use ($year) {
-                $key = sprintf('%04d-%02d', $year, $m);
-                return [$key => Carbon::create($year, $m, 1)->format('F')];
-            });
+        foreach ($categories as $cat) {
+            // Entrate: somma di allocazioni (IncomeAllocation)
+            $incomeByCategory[$cat->id] = DB::table('income_allocations as ia')
+                ->join('incomes as i', 'ia.income_id', '=', 'i.id')
+                ->select(DB::raw('MONTH(i.date) as month'), DB::raw('SUM(ia.amount) as total'))
+                ->where('ia.category_id', $cat->id)
+                ->where('i.user_id', $user->id)
+                ->where('i.family_id', $family->id ?? null)
+                ->groupBy('month')
+                ->pluck('total','month')
+                ->toArray();
 
-        // 10) Costruisci griglia
-        $grid        = [];
-        $totalsByCat = [];
-        foreach ($yearMonths as $key => $label) {
-            foreach ($categories as $cat) {
-                $sum = isset($allocs[$key])
-                     ? $allocs[$key]->where('category_id', $cat->id)->sum('amount')
-                     : 0;
-                $grid[$key][$cat->slug]   = $sum;
-                $totalsByCat[$cat->slug] = ($totalsByCat[$cat->slug] ?? 0) + $sum;
-            }
+            // Uscite: somma di expenses per budget_category_id
+            $expenseByCategory[$cat->id] = DB::table('expenses')
+                ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
+                ->where('budget_category_id', $cat->id)
+                ->where('user_id', $user->id)
+                ->where('family_id', $family->id ?? null)
+                ->groupBy('month')
+                ->pluck('total','month')
+                ->toArray();
         }
 
-        // 11) Totale storico entrate
-        $historicalTotal = Income::where('user_id',   $user->id)
-            ->where('family_id', $family->id ?? 0)
-            ->sum('amount');
+            // ======================================
+            // 9) Totale budget per categoria
+            //    = start_amount + entrate - uscite
+            // ======================================
+            $budgetTotalByCategory = [];
+            foreach ($categories as $cat) {
+                $sumInc = array_sum($incomeByCategory[$cat->id]  ?? []);
+                $sumExp = array_sum($expenseByCategory[$cat->id] ?? []);
+                $budgetTotalByCategory[$cat->id] = $cat->start_amount + $sumInc - $sumExp;
+            }
 
-        // 12) Render della view
+        // 9) Render della view con dati puliti
         return view('home', [
-            'ownFamilies'     => $ownFamilies     ?? null,
-            'pendingRequests' => $pendingRequests ?? null,
-            'families'        => $families        ?? null,
-            'family'          => $family          ?? null,
-            'balance'         => $balance,
-            'total'           => $total,
-            'liquid'          => $liquid,
-            'period'          => $periodString,
-            'hasBalance'      => $hasBalance,
-            'balanceMonths'   => $balanceMonths,
-            'latestBalance'   => $latestBalance,
-            'latestTotal'     => $latestTotal,
-            'latestLiquid'    => $latestLiquid,
-            'categories'      => $categories,
-            'yearMonths'      => $yearMonths,
-            'grid'            => $grid,
-            'totalsByCat'     => $totalsByCat,
-            'historicalTotal' => $historicalTotal,
+            'ownFamilies'        => $ownFamilies      ?? null,
+            'pendingRequests'    => $pendingRequests  ?? null,
+            'families'           => $families         ?? null,
+            'family'             => $family           ?? null,
+            'balance'            => $balance,
+            'total'              => $total,
+            'liquid'             => $liquid,
+            'period'             => $periodString,
+            'hasBalance'         => $hasBalance,
+            'balanceMonths'      => $balanceMonths,
+            'latestBalance'      => $latestBalance,
+            'latestTotal'        => $latestTotal,
+            'latestLiquid'       => $latestLiquid,
+            'categories'         => $categories,
+            'incomeByCategory'   => $incomeByCategory,
+            'expenseByCategory'  => $expenseByCategory,
+            'budgetTotalByCategory'   => $budgetTotalByCategory,
         ]);
     }
 }

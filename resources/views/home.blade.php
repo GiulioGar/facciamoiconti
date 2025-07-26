@@ -3,6 +3,21 @@
 @section('title', 'Home')
 
 @section('content')
+
+@php
+  // 6 palette coordinate: sfondo header | sfondo badge
+  $palettes = [
+    ['header' => 'bg-primary text-white',   'badge' => 'bg-white text-primary'],
+    ['header' => 'bg-success text-white',   'badge' => 'bg-white text-success'],
+    ['header' => 'bg-warning text-dark',    'badge' => 'bg-dark text-warning'],
+    ['header' => 'bg-info text-dark',       'badge' => 'bg-dark text-info'],
+    ['header' => 'bg-secondary text-white', 'badge' => 'bg-white text-secondary'],
+    ['header' => 'bg-dark text-white',      'badge' => 'bg-white text-dark'],
+  ];
+  $paletteCount = count($palettes);
+@endphp
+
+
 <div class="container-xxl flex-grow-1 container-p-y">
 
   {{-- Alert di successo --}}
@@ -75,45 +90,78 @@
   </div>
 
   {{-- BUDGET MENSILE --}}
-  <div class="card mb-4">
-    <div class="card-header">Budget Mensile</div>
-    <div class="card-body table-responsive">
-      <table class="table table-bordered text-center">
-        <thead>
-          <tr>
-            <th>Mese</th>
-            @foreach($categories as $cat)
-              <th>{{ $cat->name }}</th>
-            @endforeach
-          </tr>
-        </thead>
-        <tbody>
-          @foreach($yearMonths as $key => $label)
-            <tr>
-              <td>{{ $label }}</td>
-              @foreach($categories as $cat)
-                <td>€ {{ number_format($grid[$key][$cat->slug] ?? 0, 2, ',', '.') }}</td>
-              @endforeach
-            </tr>
-          @endforeach
-        </tbody>
-        <tfoot>
-          <tr class="fw-bold">
-            <td>Totale annuale</td>
-            @foreach($categories as $cat)
-              <td>€ {{ number_format($totalsByCat[$cat->slug] ?? 0, 2, ',', '.') }}</td>
-            @endforeach
-          </tr>
-          <tr class="fw-bold">
-            <td>Entrate complessive</td>
-            <td colspan="{{ $categories->count() }}">
-              € {{ number_format($historicalTotal, 2, ',', '.') }}
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
+<div class="row">
+
+{{-- BUDGET MENSILE --}}
+@php $palettesCount = count($palettes); @endphp
+
+@foreach($categories->chunk(4) as $chunk)
+  <div class="row">
+    @foreach($chunk as $cat)
+      @php
+        $globalIdx = $loop->parent->index * 4 + $loop->index;
+        $p = $palettes[$globalIdx % $paletteCount];
+        $total = $budgetTotalByCategory[$cat->id] ?? 0;
+      @endphp
+
+      <div class="col-lg-3 col-md-4 col-sm-6 mb-4">
+        <div class="card shadow-sm border-0 rounded-3">
+          {{-- header con nome + badge totale --}}
+          <div class="card-header {{ $p['header'] }} d-flex justify-content-between align-items-center fs-5">
+            <span>{{ $cat->name }}</span>
+            <span class="badge rounded-pill px-2 small {{ $p['badge'] }} no-wrap">
+              <b>{{ number_format($total, 0, ',', '.') }}&nbsp;€</b>
+            </span>
+          </div>
+
+          <div class="card-body p-2">
+            <div class="table-responsive">
+              <table class="table table-sm table-striped table-bordered table-hover mb-0 small">
+                <thead class="table-light">
+                  <tr>
+                    <th>Mese</th>
+                    <th class="text-end">Entrate</th>
+                    <th class="text-end">Uscite</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for($m=1; $m<=12; $m++)
+                    <tr>
+                      <td>{{ \Carbon\Carbon::create()->month($m)->locale('it')->isoFormat('MMMM') }}</td>
+                      <td class="text-end no-wrap">
+                        {{ number_format($incomeByCategory[$cat->id][$m] ?? 0,0,',','.') }}&nbsp;€
+                      </td>
+                      <td class="text-end no-wrap">
+                        {{ number_format($expenseByCategory[$cat->id][$m] ?? 0,0,',','.') }}&nbsp;€
+                      </td>
+                    </tr>
+                  @endfor
+                </tbody>
+                <tfoot class="table-active fw-semibold">
+                  <tr>
+                    <td>Totale</td>
+                    <td class="text-end no-wrap">
+                      {{ number_format(array_sum($incomeByCategory[$cat->id] ?? []),0,',','.') }}&nbsp;€
+                    </td>
+                    <td class="text-end no-wrap">
+                      {{ number_format(array_sum($expenseByCategory[$cat->id] ?? []),0,',','.') }}&nbsp;€
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    @endforeach
   </div>
+@endforeach
+
+
+
+</div>
+
 
   {{-- MODALI DINAMICI PER I SALDI --}}
   @foreach ([

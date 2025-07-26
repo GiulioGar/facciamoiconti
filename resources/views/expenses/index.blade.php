@@ -97,7 +97,7 @@
           {{-- Importo --}}
           <div class="mb-3">
             <label class="form-label">Importo (€)</label>
-            <input type="number" step="0.01" name="amount" id="expense-amount"
+            <input type="number" step="1" name="amount" id="expense-amount"
                    class="form-control @error('amount') is-invalid @enderror"
                    value="{{ old('amount') }}" required>
             @error('amount')<div class="invalid-feedback">{{ $message }}</div>@enderror

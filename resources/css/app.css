@@ -1,0 +1,20 @@
+/* Non far andare mai a capo cifre + € */
+.no-wrap {
+  white-space: nowrap;
+}
+
+/* Leggera ombra e bordi smussati */
+.card {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  border-radius: .75rem;
+}
+
+/* Righello righe al passaggio del mouse */
+.table-hover tbody tr:hover {
+  background-color: rgba(0,0,0,0.03);
+}
+
+/* Footer tavola più marcato */
+.table-active {
+  background-color: #f8f9fa !important;
+}

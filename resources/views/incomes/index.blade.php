@@ -31,7 +31,7 @@
             @foreach($income->allocations as $alloc)
               <tr>
                 <td>{{ $income->description ?? '–' }}</td>
-                <td>€ {{ number_format($alloc->amount, 2, ',', '.') }}</td>
+                <td>€ {{ number_format($alloc->amount, 0, ',', '.') }}</td>
                 <td>
                 {{ \Carbon\Carbon::parse($income->date)
                         ->isoFormat('MMMM YYYY') }}
@@ -78,7 +78,7 @@
             <div class="mb-3">
             <label class="form-label">Importo (€)</label>
             <input
-                type="number" step="0.01" name="amount" id="amount"
+                type="number" step="1" name="amount" id="amount"
                 class="form-control @error('amount') is-invalid @enderror"
                 value="{{ old('amount') }}" required>
             @error('amount')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -122,7 +122,7 @@
             <label class="col-sm-4 col-form-label">{{ $cat->name }}</label>
             <div class="col-sm-8">
             <input
-                type="number" step="0.01"
+                type="number" step="1"
                 name="allocations[{{ $cat->id }}]"            {{-- usa ID --}}
                 id="budget-{{ $cat->slug }}"
                 class="form-control budget-input"
@@ -162,7 +162,7 @@ $(function(){
     let total = parseFloat($('#amount').val()) || 0;
     $('.budget-input').each(function(){
       let perc = parseFloat($(this).data('percentage')) || 0;
-      let val  = (total * perc/100).toFixed(2);
+      let val  = (total * perc/100).toFixed(0);
       $(this).val(val);
     });
   }
