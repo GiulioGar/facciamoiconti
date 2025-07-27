@@ -14,60 +14,50 @@ class FinancialBalanceController extends Controller
         $this->middleware('auth');
     }
 
-    public function store(Request $request)
-    {
-        // 1) Regole di validazione dinamiche
-        $rules = [
-            'family_id'        => 'required|exists:families,id',
-            'accounting_month' => 'required|date_format:Y-m',
-        ];
+public function store(Request $request)
+{
+    // 1) Validation: tutti i campi obbligatori
+    $validated = $request->validate([
+        'family_id'         => 'required|exists:families,id',
+        'accounting_month'  => 'required|date_format:Y-m',
+        'bank_balance'      => 'required|numeric|min:0',
+        'other_accounts'    => 'required|numeric|min:0',
+        'cash'              => 'required|numeric|min:0',
+        'insurances'        => 'required|numeric|min:0',
+        'investments'       => 'required|numeric|min:0',
+        'debt_credit'       => 'required|numeric|min:0',
+    ]);
 
-        $fields = [
-            'bank_balance','other_accounts','cash',
-            'insurances','investments','debt_credit',
-        ];
-        foreach ($fields as $f) {
-            if ($request->has($f)) {
-                $rules[$f] = 'required|numeric';
-            }
-        }
+    // 2) Converti 'YYYY-MM' → 'YYYY-MM-01'
+    $periodDate = Carbon::createFromFormat('Y-m', $validated['accounting_month'])
+                    ->startOfMonth()
+                    ->toDateString();
 
-        $validated = $request->validate($rules);
+    // 3) Prepara i dati: eredita ultimo snapshot se serve (opzionale)
+    $latest = FinancialBalance::where('user_id', Auth::id())
+              ->where('family_id', $validated['family_id'])
+              ->orderBy('accounting_month','desc')
+              ->first();
 
-        // 2) Periodo contabile
-        $period = Carbon::createFromFormat('Y-m', $validated['accounting_month'])
-                        ->startOfMonth();
+    $data = [
+        'user_id'          => Auth::id(),
+        'family_id'        => $validated['family_id'],
+        'accounting_month' => $periodDate,
+        'bank_balance'     => $validated['bank_balance'],
+        'other_accounts'   => $validated['other_accounts'],
+        'cash'             => $validated['cash'],
+        'insurances'       => $validated['insurances'],
+        'investments'      => $validated['investments'],
+        'debt_credit'      => $validated['debt_credit'],
+    ];
 
-        // 3) Prendi l’ultimo snapshot (qualsiasi mese) per user/family
-        $latest = FinancialBalance::where('user_id', Auth::id())
-                  ->where('family_id', $validated['family_id'])
-                  ->orderBy('accounting_month', 'desc')
-                  ->first();
+    // 4) Crea SEMPRE un nuovo snapshot (nuova riga)
+    FinancialBalance::create($data);
 
-        // 4) Prepara i dati base: se esiste uno snapshot, eredita i suoi valori, altrimenti 0
-        $data = [
-            'user_id'          => Auth::id(),
-            'family_id'        => $validated['family_id'],
-            'accounting_month' => $period,
-            'bank_balance'     => $latest ? $latest->bank_balance   : 0,
-            'other_accounts'   => $latest ? $latest->other_accounts : 0,
-            'cash'             => $latest ? $latest->cash           : 0,
-            'insurances'       => $latest ? $latest->insurances     : 0,
-            'investments'      => $latest ? $latest->investments    : 0,
-            'debt_credit'      => $latest ? $latest->debt_credit     : 0,
-        ];
+    // 5) Redirect con feedback
+    return redirect()
+           ->route('home')
+           ->with('success', 'Suddivisione Attività salvata correttamente');
+}
 
-        // 5) Sovrascrivi solo il campo che arriva dal form
-        foreach ($fields as $f) {
-            if (array_key_exists($f, $validated)) {
-                $data[$f] = $validated[$f];
-            }
-        }
-
-        // 6) Crea sempre un nuovo snapshot
-        FinancialBalance::create($data);
-
-        // 7) Redirect senza flash di “success”
-        return redirect()->route('home');
-    }
 }

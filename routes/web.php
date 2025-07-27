@@ -7,6 +7,7 @@ use App\Http\Controllers\FamilyController;
 use App\Http\Controllers\FinancialBalanceController;
 use App\Http\Controllers\IncomeController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\InvestmentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -66,6 +67,11 @@ Route::post('/balance', [FinancialBalanceController::class, 'store'])->name('bal
        // Rotte per le uscite
     Route::resource('expenses', ExpenseController::class)
          ->except(['show']); // puoi togliere show se non ti serve
+
+        Route::post('/investments', [InvestmentController::class, 'store'])
+            ->name('investments.store')
+            ->middleware('auth');
+
 
 
 // Qualunque altra rotta (non definita) → redirect a login

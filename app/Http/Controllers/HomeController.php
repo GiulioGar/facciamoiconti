@@ -10,6 +10,8 @@ use App\Models\FinancialBalance;
 use App\Models\BudgetCategory;
 use App\Models\IncomeAllocation;
 use App\Models\Income;
+use App\Models\Investment;
+use App\Models\InvestmentCategory;
 use Carbon\Carbon;
 
 class HomeController extends Controller
@@ -180,8 +182,80 @@ class HomeController extends Controller
                 $budgetTotalByCategory[$cat->id] = $cat->start_amount + $sumInc - $sumExp;
             }
 
-        // 9) Render della view con dati puliti
-        return view('home', [
+           // Calcolo del totale assegnato a tutti i budget
+            $assignedTotal = array_sum($budgetTotalByCategory);
+
+            // ————————————————————————
+            // Resoconto Mensile Totale
+            // ————————————————————————
+            $summaryIncomeByMonth = DB::table('incomes')
+                ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
+                ->where('user_id', auth()->id())
+                ->groupBy('month')
+                ->pluck('total','month')
+                ->toArray();
+
+            $summaryExpenseByMonth = DB::table('expenses')
+                ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
+                ->where('user_id', auth()->id())
+                ->groupBy('month')
+                ->pluck('total','month')
+                ->toArray();
+
+            // Calcolo il “Risultato” mese per mese (solo interi)
+            $summaryGainByMonth = [];
+            for($m = 1; $m <= 12; $m++){
+                $inc  = intval(round($summaryIncomeByMonth[$m]  ?? 0));
+                $exp  = intval(round($summaryExpenseByMonth[$m] ?? 0));
+                $summaryGainByMonth[$m] = $inc - $exp;
+            }
+
+            // Totale dell’anno
+            $totalSummaryIncome  = array_sum(array_map('intval', $summaryIncomeByMonth));
+            $totalSummaryExpense = array_sum(array_map('intval', $summaryExpenseByMonth));
+            $totalSummaryGain    = array_sum($summaryGainByMonth);
+
+            // ——————————————————————————————
+            // Investimenti: carica categorie e ultimi valori
+            // ——————————————————————————————
+
+            $investmentCategories = InvestmentCategory::orderBy('name')->get();
+
+            $latestInvestments = [];
+            $investmentSummary = [];
+
+            foreach ($investmentCategories as $cat) {
+                // prendi l’ultimo record per questa categoria
+                $last = Investment::where('user_id', auth()->id())
+                    ->where('family_id', $family->id ?? null)
+                    ->where('category_id', $cat->id)
+                    ->orderBy('created_at', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->first();
+
+                $curr = $last ? $last->current_balance  : 0;
+                $inv  = $last ? $last->invested_balance : 0;
+                $profit = $curr - $inv;
+
+                // array per la tabella
+                $investmentSummary[] = [
+                    'id'                => $cat->id,
+                    'name'              => $cat->name,
+                    'current_balance'   => $curr,
+                    'invested_balance'  => $inv,
+                    'profit'            => $profit,
+                ];
+
+                // array per pre‐popolare la modale
+                $latestInvestments[$cat->id] = [
+                    'current_balance'   => $curr,
+                    'invested_balance'  => $inv,
+                ];
+            }
+
+
+
+        $viewData = [
             'ownFamilies'        => $ownFamilies      ?? null,
             'pendingRequests'    => $pendingRequests  ?? null,
             'families'           => $families         ?? null,
@@ -199,6 +273,20 @@ class HomeController extends Controller
             'incomeByCategory'   => $incomeByCategory,
             'expenseByCategory'  => $expenseByCategory,
             'budgetTotalByCategory'   => $budgetTotalByCategory,
-        ]);
+            'assignedTotal'         => $assignedTotal,
+            'summaryIncomeByMonth'  => $summaryIncomeByMonth,
+            'summaryExpenseByMonth' => $summaryExpenseByMonth,
+            'summaryGainByMonth'    => $summaryGainByMonth,
+            'totalSummaryIncome'    => $totalSummaryIncome,
+            'totalSummaryExpense'   => $totalSummaryExpense,
+            'totalSummaryGain'      => $totalSummaryGain,
+            'investmentCategories' => $investmentCategories,
+            'investmentSummary'    => $investmentSummary,
+            'latestInvestments'    => $latestInvestments,
+            ];
+
+
+    return view('home', array_merge( $viewData ));
+
     }
 }
