@@ -14,6 +14,8 @@ use App\Models\Investment;
 use App\Models\InvestmentCategory;
 use Carbon\Carbon;
 
+
+
 class HomeController extends Controller
 {
     public function __construct()
@@ -27,6 +29,7 @@ class HomeController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
+        $currentYear = Carbon::now()->year;
 
         // 1) Periodo contabile (primo giorno del mese)
         if ($request->filled('accounting_month')) {
@@ -144,32 +147,63 @@ class HomeController extends Controller
         // 7) Carica categorie per budget mensile
         $categories = BudgetCategory::orderBy('sort_order')->get();
 
+
         // 8) Calcolo entrate/uscite mensili per categoria
-        $incomeByCategory  = [];
-        $expenseByCategory = [];
+            foreach ($categories as $cat) {
+                // *******************
+                // ENTRATE (solo anno corrente)
+                // *******************
+                $incomeByCategory[$cat->id] = DB::table('income_allocations as ia')
+                    ->join('incomes as i', 'ia.income_id', '=', 'i.id')
+                    ->select(
+                        DB::raw('MONTH(i.date) as month'),
+                        DB::raw('SUM(ia.amount) as total')
+                    )
+                    ->where('ia.category_id', $cat->id)
+                    ->where('i.user_id',   $user->id)
+                    ->where('i.family_id', $family->id)
+                    ->whereYear('i.date',   $currentYear)      // <— Filtro anno
+                    ->groupBy('month')
+                    ->pluck('total','month')
+                    ->toArray();
 
-        foreach ($categories as $cat) {
-            // Entrate: somma di allocazioni (IncomeAllocation)
-            $incomeByCategory[$cat->id] = DB::table('income_allocations as ia')
-                ->join('incomes as i', 'ia.income_id', '=', 'i.id')
-                ->select(DB::raw('MONTH(i.date) as month'), DB::raw('SUM(ia.amount) as total'))
-                ->where('ia.category_id', $cat->id)
-                ->where('i.user_id', $user->id)
-                ->where('i.family_id', $family->id ?? null)
-                ->groupBy('month')
-                ->pluck('total','month')
-                ->toArray();
+                // *******************
+                // USCITE (solo anno corrente)
+                // *******************
+                $expenseByCategory[$cat->id] = DB::table('expenses')
+                    ->select(
+                        DB::raw('MONTH(date) as month'),
+                        DB::raw('SUM(amount) as total')
+                    )
+                    ->where('budget_category_id', $cat->id)
+                    ->where('user_id',   $user->id)
+                    ->where('family_id', $family->id)
+                    ->whereYear('date',    $currentYear)      // <— Filtro anno
+                    ->groupBy('month')
+                    ->pluck('total','month')
+                    ->toArray();
+            }
 
-            // Uscite: somma di expenses per budget_category_id
-            $expenseByCategory[$cat->id] = DB::table('expenses')
-                ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
-                ->where('budget_category_id', $cat->id)
-                ->where('user_id', $user->id)
-                ->where('family_id', $family->id ?? null)
-                ->groupBy('month')
-                ->pluck('total','month')
-                ->toArray();
-        }
+            // Somma **tutti** gli anni (entrate)
+            $totalIncomeAllYears   = [];
+            // Somma **tutti** gli anni (uscite)
+            $totalExpenseAllYears  = [];
+
+            foreach ($categories as $cat) {
+                $totalIncomeAllYears[$cat->id] = DB::table('income_allocations as ia')
+                    ->join('incomes as i', 'ia.income_id', '=', 'i.id')
+                    ->where('ia.category_id',    $cat->id)
+                    ->where('i.user_id',         $user->id)
+                    ->where('i.family_id',       $family->id)
+                    ->sum('ia.amount');
+
+                $totalExpenseAllYears[$cat->id] = DB::table('expenses')
+                    ->where('budget_category_id', $cat->id)
+                    ->where('user_id',            $user->id)
+                    ->where('family_id',          $family->id)
+                    ->sum('amount');
+            }
+
 
             // ======================================
             // 9) Totale budget per categoria
@@ -177,9 +211,11 @@ class HomeController extends Controller
             // ======================================
             $budgetTotalByCategory = [];
             foreach ($categories as $cat) {
-                $sumInc = array_sum($incomeByCategory[$cat->id]  ?? []);
-                $sumExp = array_sum($expenseByCategory[$cat->id] ?? []);
-                $budgetTotalByCategory[$cat->id] = $cat->start_amount + $sumInc - $sumExp;
+                $sumIncAll = $totalIncomeAllYears[$cat->id]  ?? 0;
+                $sumExpAll = $totalExpenseAllYears[$cat->id] ?? 0;
+                $start     = (Auth::id() === 1) ? $cat->start_amount : 0;
+
+                $budgetTotalByCategory[$cat->id] = $start + $sumIncAll - $sumExpAll;
             }
 
            // Calcolo del totale assegnato a tutti i budget
@@ -191,6 +227,7 @@ class HomeController extends Controller
             $summaryIncomeByMonth = DB::table('incomes')
                 ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
                 ->where('user_id', auth()->id())
+                ->whereYear('date',    $currentYear)
                 ->groupBy('month')
                 ->pluck('total','month')
                 ->toArray();
@@ -198,6 +235,7 @@ class HomeController extends Controller
             $summaryExpenseByMonth = DB::table('expenses')
                 ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
                 ->where('user_id', auth()->id())
+                ->whereYear('date',    $currentYear)
                 ->groupBy('month')
                 ->pluck('total','month')
                 ->toArray();
@@ -252,6 +290,7 @@ class HomeController extends Controller
                     'invested_balance'  => $inv,
                 ];
             }
+
 
 
 

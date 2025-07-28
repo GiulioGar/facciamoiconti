@@ -125,7 +125,7 @@
     @foreach($chunk as $cat)
       @php
         $globalIdx = $loop->parent->index * 4 + $loop->index;
-        $p = $palettes[$globalIdx % $paletteCount];
+        $p = $palettes[$globalIdx % $palettesCount];
         $total = $budgetTotalByCategory[$cat->id] ?? 0;
       @endphp
 
