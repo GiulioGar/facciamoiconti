@@ -68,6 +68,11 @@ Route::post('/balance', [FinancialBalanceController::class, 'store'])->name('bal
     Route::resource('expenses', ExpenseController::class)
          ->except(['show']); // puoi togliere show se non ti serve
 
+    // Conti uniti per famiglia
+    Route::get('families/{family}/combined-balances',
+        [FamilyController::class, 'combinedBalances'])
+        ->name('families.combined-balances');
+
         Route::post('/investments', [InvestmentController::class, 'store'])
             ->name('investments.store')
             ->middleware('auth');

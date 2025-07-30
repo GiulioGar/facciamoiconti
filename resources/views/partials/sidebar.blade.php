@@ -107,20 +107,25 @@
               </ul>
             </li>
 
-            <!-- Apps & Pages -->
-            <li class="menu-header small text-uppercase">
-              <span class="menu-header-text">Apps &amp; Pages</span>
-            </li>
-            <li class="menu-item">
-              <a
-                href="https://demos.themeselection.com/sneat-bootstrap-html-admin-template/html/vertical-menu-template/app-calendar.html"
-                target="_blank"
-                class="menu-link">
-                <i class="menu-icon tf-icons bx bx-calendar"></i>
-                <div class="text-truncate" data-i18n="Calendar">Calendar</div>
-                <div class="badge rounded-pill bg-label-primary text-uppercase fs-tiny ms-auto">Pro</div>
-              </a>
-            </li>
+<!-- FAMIGLIA -->
+@php
+    $user = auth()->user();
+    // Usare sia famiglie di cui è membro che quelle di cui è proprietario
+    $family = $user->families->first() ?: $user->ownedFamilies->first();
+@endphp
+
+@if($family)
+  <li class="menu-header small text-uppercase">
+    <span class="menu-header-text">CONTI FAMILIARI</span>
+  </li>
+  <li class="menu-item {{ request()->routeIs('families.combined-balances') ? 'active' : '' }}">
+    <a href="{{ route('families.combined-balances', ['family' => $family->id]) }}" class="menu-link">
+      <i class="menu-icon tf-icons bx bxs-group"></i>
+      <div class="text-truncate" data-i18n="Conti uniti">Conti uniti</div>
+    </a>
+  </li>
+@endif
+
 
             <!-- Misc -->
             <li class="menu-header small text-uppercase"><span class="menu-header-text">Misc</span></li>
