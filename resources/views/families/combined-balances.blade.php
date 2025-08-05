@@ -200,29 +200,61 @@
 
   <div class="row">
   <div class="col-12">
-    <div class="card card-difference mb-4">
-      <div class="card-header">
-        <i class="bi bi-cash-stack me-2"></i> DIFFERENZA SPESE
-      </div>
-      <div class="card-body">
-        @php
-          // Determino chi è in debito/credito
-          $ownerNick  = $family->owner->nickname;
-          $memberNick = $firstMember->nickname;
-          $amount     = abs($diff);
-        $isDebtor = $diff > 0;
-        $verb     = $isDebtor
-               ? 'sei in debito con'
-               : 'sei in credito verso';
-        @endphp
 
-        <p class="mb-0">
-          <strong>Hei {{ $ownerNick }},</strong>
-          {{ $verb }} <strong>{{ $memberNick }}</strong>
-          di <strong>{{ number_format($amount,2,',','.') }}€</strong>!
-        </p>
-      </div>
-    </div>
+        <div class="card card-difference mb-4 text-center">
+  <div class="card-header justify-content-center">
+    <i class="bi bi-balance-scale me-2"></i> DIFFERENZA SPESE
+  </div>
+  <br/>
+  <div class="card-body">
+    @php
+      $loggedUser = auth()->user();
+      $otherUser  = $loggedUser->id === $family->owner->id
+                      ? $firstMember
+                      : $family->owner;
+
+      // Totali con filtro budget_id (già fatti nel controller)
+      $loggedIsOwner = $loggedUser->id === $family->owner->id;
+      $userTotal     = $loggedIsOwner
+                          ? $allTimeOwnerSum + $credit
+                          : $allTimeMemberSum;
+
+      $otherTotal    = !$loggedIsOwner
+                          ? $allTimeOwnerSum + $credit
+                          : $allTimeMemberSum;
+
+      $diff = $userTotal - $otherTotal;
+      $amount = abs($diff);
+      $formatted = number_format($amount, 2, ',', '.');
+    @endphp
+
+    @if ($diff === 0)
+      <p class="fw-bold fs-5">
+        🥳 Tutto bilanciato!<br>
+        <strong style="color:#008cbd;">{{ $loggedUser->nickname }}</strong> e <strong style="color:#bc29c6;">{{ $otherUser->nickname }}</strong> sono pari! 🤝<br>
+        Nessuno deve nulla, che armonia!
+      </p>
+    @elseif ($diff > 0)
+      <p class="fw-bold fs-5">
+        🎉 Bene <strong style="color:#008cbd;">{{ $loggedUser->nickname }}</strong>!<br>
+        Sei in credito verso <strong style="color:#bc29c6;">{{ $otherUser->nickname }}</strong> di<br>
+        <span class="fs-3 text-success">{{ $formatted }}€</span><br>
+        Puoi rilassarti e risparmiare un pò! 🏆
+      </p>
+    @else
+      <p class="fw-bold fs-5">
+        😅 Uhm <strong style="color:#008cbd;">{{ $loggedUser->nickname }}</strong>...<br>
+        sei in debito con <strong style="color:#bc29c6;">{{ $otherUser->nickname }}</strong> di<br>
+        <span class="fs-3 text-warning">{{ $formatted }}€</span><br>
+        Tocca pagare, o sdebitarti in altri modi! 🍽️
+      </p>
+    @endif
+  </div>
+</div>
+
+
+
+
   </div>
 </div>
 

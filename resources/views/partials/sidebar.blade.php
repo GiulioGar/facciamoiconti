@@ -94,41 +94,33 @@
                 </a>
                 </li>
 
-                <li class="menu-item">
-                  <a
-                    href="https://demos.themeselection.com/sneat-bootstrap-html-admin-template/html/vertical-menu-template/dashboards-crm.html"
-                    target="_blank"
-                    class="menu-link">
-                    <div class="text-truncate" data-i18n="CRM">CRM</div>
-                    <div class="badge rounded-pill bg-label-primary text-uppercase fs-tiny ms-auto">Pro</div>
-                  </a>
-                </li>
-
               </ul>
             </li>
 
 <!-- FAMIGLIA -->
-@php
-    $user = auth()->user();
-    // Usare sia famiglie di cui è membro che quelle di cui è proprietario
-    $family = $user->families->first() ?: $user->ownedFamilies->first();
-@endphp
+@auth
+  @php
+      $user = auth()->user();
+      $family = $user->families->first() ?: $user->ownedFamilies->first();
+  @endphp
 
-@if($family)
-  <li class="menu-header small text-uppercase">
-    <span class="menu-header-text">CONTI FAMILIARI</span>
-  </li>
-  <li class="menu-item {{ request()->routeIs('families.combined-balances') ? 'active' : '' }}">
-    <a href="{{ route('families.combined-balances', ['family' => $family->id]) }}" class="menu-link">
-      <i class="menu-icon tf-icons bx bxs-group"></i>
-      <div class="text-truncate" data-i18n="Conti uniti">Conti uniti</div>
-    </a>
-  </li>
-@endif
+  @if($family)
+    <li class="menu-header small text-uppercase">
+      <span class="menu-header-text">CONTI FAMILIARI</span>
+    </li>
+    <li class="menu-item {{ request()->routeIs('families.combined-balances') ? 'active' : '' }}">
+      <a href="{{ route('families.combined-balances', ['family' => $family->id]) }}" class="menu-link">
+        <i class="menu-icon tf-icons bx bxs-group"></i>
+        <div class="text-truncate" data-i18n="Conti uniti">Spese Comuni</div>
+      </a>
+    </li>
+  @endif
+@endauth
+
 
 
             <!-- Misc -->
-            <li class="menu-header small text-uppercase"><span class="menu-header-text">Misc</span></li>
+            <li class="menu-header small text-uppercase"><span class="menu-header-text">IMPOSTAZIONI</span></li>
             <li class="menu-item">
               <a
                 href="{{ route('admin.dashboard') }}"
@@ -136,15 +128,6 @@
                 class="menu-link">
                 <i class="menu-icon tf-icons bx bx-support"></i>
                 <div class="text-truncate" data-i18n="Support">Area Admin</div>
-              </a>
-            </li>
-            <li class="menu-item">
-              <a
-                href="https://demos.themeselection.com/sneat-bootstrap-html-admin-template/documentation/"
-                target="_blank"
-                class="menu-link">
-                <i class="menu-icon tf-icons bx bx-file"></i>
-                <div class="text-truncate" data-i18n="Documentation">Documentation</div>
               </a>
             </li>
           </ul>

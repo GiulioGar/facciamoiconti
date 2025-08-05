@@ -99,87 +99,97 @@ class FamilyController extends Controller
     /**
      * 7. Conti uniti: dettagli annuali, riepilogo e differenza
      */
-    public function combinedBalances(Family $family)
-    {
-        $user = auth()->user();
+public function combinedBalances(Family $family)
+{
+    $user = auth()->user();
 
-        // Autorizzazione: solo owner o membro
-        if ($family->owner_id !== $user->id
-            && ! $family->members->contains($user)
-        ) {
-            abort(403, 'Non sei autorizzato ad accedere a questa famiglia');
-        }
-
-        // ID delle categorie da includere
-        $commonIds = [2,3,4,17,24,7,8,9,10,11,12,13,16,18,19,20,21];
-
-        // Carico le categorie
-        $categories = ExpenseCategory::whereIn('id', $commonIds)->get();
-
-        // Elenco utenti: prima owner poi membri
-        $users = collect([$family->owner])->merge($family->members);
-
-        // Dati per tabella dettagli anno corrente
-        $data = [];
-        foreach ($categories as $category) {
-            $row = ['category' => $category->name, 'values' => []];
-            foreach ($users as $member) {
-                $row['values'][$member->id] = $member->expenses()
-                    ->where('expense_category_id', $category->id)
-                    ->whereYear('date', now()->year)
-                    ->sum('amount');
-            }
-            $data[] = $row;
-        }
-
-        // Totali anno corrente
-$ownerSum = $family->owner
-    ->expenses()
-    ->whereIn('expense_category_id', $commonIds)
-    ->whereYear('date', now()->year)
-    ->sum('amount');
-
-$memberTotals = $family->members->mapWithKeys(function($member) use ($commonIds) {
-    $sum = $member->expenses()
-        ->whereIn('expense_category_id', $commonIds)
-        ->whereYear('date', now()->year)
-        ->sum('amount');  // <— qui specifica 'amount'
-    return [$member->id => $sum];
-});
-
-        // Spese all-time (tutte le date) per differenza
-        $allTimeOwnerSum = $family->owner
-            ->expenses()
-            ->whereIn('expense_category_id', $commonIds)
-            ->sum('amount');
-
-        $firstMember = $family->members->first();
-        $allTimeMemberSum = $firstMember
-            ->expenses()
-            ->whereIn('expense_category_id', $commonIds)
-            ->sum('amount');
-
-        // Credito fisso
-        $credit = 1269;
-
-        // Net owner dopo credito
-        $netOwner = $allTimeOwnerSum + $credit;
-
-        // Differenza: proprietario in debito (+) o credito (–)
-        $diff = $netOwner - $allTimeMemberSum;
-
-        return view('families.combined-balances', compact(
-            'family',
-            'categories',
-            'data',
-            'users',
-            'ownerSum',
-            'memberTotals',
-            'allTimeOwnerSum',
-            'allTimeMemberSum',
-            'credit',
-            'diff',
-            'firstMember' 
-        ));
+    // Autorizzazione: solo owner o membro
+    if ($family->owner_id !== $user->id
+        && ! $family->members->contains($user)
+    ) {
+        abort(403, 'Non sei autorizzato ad accedere a questa famiglia');
     }
+
+    // ID delle categorie da includere
+    $commonIds = [2,3,4,17,24,7,8,9,10,11,12,13,16,18,19,20,21];
+
+    // Solo budget ID 2 (Familiare) o 3 (Extra)
+    $budgetIds = [2, 3];
+
+    // Carico le categorie
+    $categories = ExpenseCategory::whereIn('id', $commonIds)->get();
+
+    // Elenco utenti: prima owner poi membri
+    $users = collect([$family->owner])->merge($family->members);
+
+    // Dati per tabella dettagli anno corrente
+    $data = [];
+    foreach ($categories as $category) {
+        $row = ['category' => $category->name, 'values' => []];
+        foreach ($users as $member) {
+            $row['values'][$member->id] = $member->expenses()
+                ->where('expense_category_id', $category->id)
+                ->whereYear('date', now()->year)
+                ->whereIn('budget_category_id', $budgetIds) // ← Aggiunto filtro budget
+                ->sum('amount');
+        }
+        $data[] = $row;
+    }
+
+    // Totali anno corrente
+    $ownerSum = $family->owner
+        ->expenses()
+        ->whereIn('expense_category_id', $commonIds)
+        ->whereIn('budget_category_id', $budgetIds)
+        ->whereYear('date', now()->year)
+        ->sum('amount');
+
+    $memberTotals = $family->members->mapWithKeys(function($member) use ($commonIds, $budgetIds) {
+        $sum = $member->expenses()
+            ->whereIn('expense_category_id', $commonIds)
+            ->whereIn('budget_category_id', $budgetIds)
+            ->whereYear('date', now()->year)
+            ->sum('amount');
+        return [$member->id => $sum];
+    });
+
+    // Spese all-time (tutte le date) per differenza
+    $allTimeOwnerSum = $family->owner
+        ->expenses()
+        ->whereIn('expense_category_id', $commonIds)
+        ->whereIn('budget_category_id', $budgetIds)
+        ->sum('amount');
+
+    $firstMember = $family->members->first();
+    $allTimeMemberSum = $firstMember
+        ? $firstMember->expenses()
+            ->whereIn('expense_category_id', $commonIds)
+            ->whereIn('budget_category_id', $budgetIds)
+            ->sum('amount')
+        : 0;
+
+    // Credito fisso
+    $credit = 1269;
+
+    // Net owner dopo credito
+    $netOwner = $allTimeOwnerSum + $credit;
+
+    // Differenza: positivo = owner in debito, negativo = owner in credito
+    $diff = $netOwner - $allTimeMemberSum;
+
+    return view('families.combined-balances', compact(
+        'family',
+        'categories',
+        'data',
+        'users',
+        'ownerSum',
+        'memberTotals',
+        'allTimeOwnerSum',
+        'allTimeMemberSum',
+        'credit',
+        'diff',
+        'firstMember'
+    ));
+}
+
 }
