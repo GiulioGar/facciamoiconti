@@ -12,42 +12,105 @@
     </button>
   </div>
 
-  {{-- Tabella Uscite --}}
-  <div class="card">
-    <div class="card-header">Elenco Uscite</div>
-    <div class="card-body table-responsive">
-      <table class="table table-striped">
-        <thead>
-          <tr>
-            <th>Spesa</th>
-            <th>Importo</th>
-            <th>Mese</th>
-            <th>Budget</th>
-            <th>Categoria</th>
-            <th>Note</th>
-          </tr>
-        </thead>
-        <tbody>
-          @forelse($expenses as $expense)
+{{-- VERSIONE TABELLA per desktop --}}
+<div class="card d-none d-md-block">
+  <div class="card-header">Elenco Uscite</div>
+  <div class="card-body table-responsive p-3">
+    <table id="expense-table" class="table table-modern table-hover w-100">
+      <thead>
+        <tr>
+          <th>Spesa</th>
+          <th>Importo</th>
+          <th>Mese</th>
+          <th>Budget</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+            @forelse($expenses as $expense)
+            @php
+                switch($expense->budgetCategory->slug) {
+                case 'personale': $badgeColor = 'primary'; break;
+                case 'familiare': $badgeColor = 'info'; break;
+                case 'extra':     $badgeColor = 'warning'; break;
+                default:          $badgeColor = 'secondary';
+                }
+
+                $slug = $expense->expenseCategory->slug ?? null;
+                $iconData = category_icons()[$slug] ?? ['icon' => 'tag', 'color' => 'text-danger'];
+
+            @endphp
+
             <tr>
-              <td>{{ $expense->expenseCategory->name }}</td>
-              <td>€ {{ number_format($expense->amount, 2, ',', '.') }}</td>
-              <td>{{ \Carbon\Carbon::parse($expense->date)->locale('it')->isoFormat('MMMM YYYY') }}</td>
-              <td>{{ $expense->budgetCategory->name }}</td>
-              <td>{{ $expense->expenseCategory->name }}</td>
-              <td>{{ $expense->note ?? '–' }}</td>
+                <td><i class="bi bi-{{ $iconData['icon'] }} {{ $iconData['color'] }} me-1"></i> {{ $expense->expenseCategory->name }}</td>
+                <td>€ {{ number_format($expense->amount, 0, ',', '.') }}</td>
+                <td>{{ \Carbon\Carbon::parse($expense->date)->locale('it')->isoFormat('MMM YYYY') }}</td>
+                <td><span class="badge bg-{{ $badgeColor }}">{{ $expense->budgetCategory->name }}</span></td>
+                <td>{{ $expense->note ?? '–' }}</td>
             </tr>
-          @empty
+            @empty
             <tr>
-              <td colspan="6" class="text-center">Nessuna spesa registrata.</td>
+                <td colspan="6" class="text-center">Nessuna spesa registrata.</td>
             </tr>
-          @endforelse
-        </tbody>
-      </table>
-      {{-- Paginazione --}}
-      {{ $expenses->links() }}
-    </div>
+            @endforelse
+      </tbody>
+    </table>
   </div>
+</div>
+
+{{-- VERSIONE CARD per mobile --}}
+<div class="d-block d-md-none">
+  @forelse($expenses as $expense)
+    @php
+        switch($expense->budgetCategory->slug) {
+          case 'personale': $badgeColor = 'primary'; break;
+          case 'familiare': $badgeColor = 'info'; break;
+          case 'extra':     $badgeColor = 'warning'; break;
+          default:          $badgeColor = 'secondary';
+        }
+    
+                $slug = $expense->expenseCategory->slug ?? null;
+                $iconData = category_icons()[$slug] ?? ['icon' => 'credit-card', 'color' => 'text-danger'];
+
+    @endphp
+    <div class="card mb-3 shadow-sm position-relative overflow-hidden border-0">
+      {{-- Linea colorata a sinistra --}}
+      <div class="position-absolute top-0 bottom-0 start-0 bg-{{ $badgeColor }}" style="width: 5px;"></div>
+
+      <div class="card-body py-3 ps-4 pe-3">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0 text-nowrap">€ {{ number_format($expense->amount, 0, ',', '.') }}</h6>
+          <small class="text-muted text-end">{{ \Carbon\Carbon::parse($expense->date)->locale('it')->isoFormat('MMM YYYY') }}</small>
+        </div>
+
+        <p class="mb-1 fw-semibold">
+          <i class="bi bi-{{ $iconData['icon'] }} {{ $iconData['color'] }} me-1"></i> {{ $expense->expenseCategory->name }} 
+        </p>
+
+        <div class="row small text-muted">
+          <div class="col-6">
+            <strong>Budget</strong><br>
+           
+          </div>
+          <div class="col-6">
+             <span class="badge bg-{{ $badgeColor }}">{{ $expense->budgetCategory->name }}</span>
+          </div>
+          @if($expense->note)
+          <div class="col-12 mt-2">
+            <strong>Note</strong><br>
+            <span class="text-dark">{{ $expense->note }}</span>
+          </div>
+          @endif
+        </div>
+      </div>
+    </div>
+  @empty
+    <p class="text-center">Nessuna spesa registrata.</p>
+  @endforelse
+</div>
+
+
+  
 </div>
 
 {{-- Modal Nuova Spesa --}}
@@ -195,4 +258,33 @@ $(function(){
   });
 });
 </script>
+
+<!-- DataTables -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+  $(function () {
+$('#expense-table').DataTable({
+  responsive: {
+    details: {
+      type: 'inline',
+      target: 'tr'
+    }
+  },
+  pageLength: 20,
+  ordering: false,
+  lengthMenu: [5, 10, 25, 50, 100],
+  language: {
+    url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/it-IT.json'
+  }
+});
+
+
+
+  });
+</script>
+
+
 @endpush

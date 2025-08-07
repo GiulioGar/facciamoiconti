@@ -14,6 +14,9 @@
   <link rel="stylesheet" href="{{ asset('assets/css/demo.css') }}" />
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.css') }}" />
   <link rel="stylesheet" href="{{ asset('assets/vendor/libs/apex-charts/apex-charts.css') }}" />
+  <link href="{{ asset('assets/css/dashboard-custom.css') }}" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
 
   <script src="{{ asset('assets/vendor/js/helpers.js') }}"></script>
   <script src="{{ asset('assets/js/config.js') }}"></script>

@@ -5,23 +5,23 @@
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
 
-  {{-- Button per aprire modal --}}
+  {{-- Pulsante Nuova Entrata --}}
   <div class="d-flex justify-content-end mb-3">
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNewIncome">
       + Nuova Entrata
     </button>
   </div>
 
-  {{-- Tabella entrate --}}
-  <div class="card">
+  {{-- VERSIONE TABELLA (desktop) --}}
+  <div class="card d-none d-md-block">
     <div class="card-header">Elenco Entrate</div>
-    <div class="card-body table-responsive">
-      <table class="table table-striped">
-        <thead>
+    <div class="card-body table-responsive pt-3">
+      <table id="income-table" class="table table-modern table-hover w-100 dt-responsive nowrap">
+        <thead style="background-color: #f8f9fa!important; color: #343a40!important;">
           <tr>
-            <th>Entrata</th>
-            <th>Importo</th>
-            <th>Mese</th>
+            <th class="force-show">Entrata</th>
+            <th class="force-show">Importo</th>
+            <th class="force-show">Mese</th>
             <th>Budget</th>
             <th>Note</th>
           </tr>
@@ -29,18 +29,28 @@
         <tbody>
           @foreach($incomes as $income)
             @foreach($income->allocations as $alloc)
+              @php
+                $budgetName = $alloc->category ? $alloc->category->name : ucfirst($alloc->type);
+                $budgetColors = [
+                  'Personale' => 'primary',
+                  'Familiare' => 'info',
+                  'Extra'     => 'warning',
+                  'Risparmi'  => 'success',
+                  'Altro'     => 'secondary',
+                ];
+                $color = $budgetColors[$budgetName] ?? 'secondary';
+              @endphp
               <tr>
-                <td>{{ $income->description ?? '–' }}</td>
-                <td>€ {{ number_format($alloc->amount, 0, ',', '.') }}</td>
-                <td>
-                {{ \Carbon\Carbon::parse($income->date)
-                        ->isoFormat('MMMM YYYY') }}
+                <td class="force-show">
+                  <i class="bi bi-cash-coin text-success me-2"></i>
+                  {{ $income->description ?? '–' }}
+                </td>
+                <td class="force-show">€ {{ number_format($alloc->amount, 0, ',', '.') }}</td>
+                <td class="force-show">
+                  {{ \Carbon\Carbon::parse($income->date)->locale('it')->isoFormat('MMM YYYY') }}
                 </td>
                 <td>
-                  {{-- se c’è category: nome, altrimenti il tipo --}}
-                  {{ $alloc->category
-                       ? $alloc->category->name
-                       : ucfirst($alloc->type) }}
+                  <span class="badge bg-{{ $color }}">{{ $budgetName }}</span>
                 </td>
                 <td>—</td>
               </tr>
@@ -49,19 +59,73 @@
         </tbody>
       </table>
 
-      {{-- Paginazione --}}
+      {{-- Paginazione desktop --}}
+      <div class="d-flex justify-content-center mt-3">
+        {{ $incomes->links() }}
+      </div>
+    </div>
+  </div>
+
+  {{-- VERSIONE MOBILE (card) --}}
+  <div class="d-block d-md-none px-2 pt-2">
+    @forelse($incomes as $income)
+      @foreach($income->allocations as $alloc)
+        @php
+          $budgetName = $alloc->category ? $alloc->category->name : ucfirst($alloc->type);
+          $budgetColors = [
+            'Personale' => 'primary',
+            'Familiare' => 'info',
+            'Extra'     => 'warning',
+            'Risparmi'  => 'success',
+            'Altro'     => 'secondary',
+          ];
+          $color = $budgetColors[$budgetName] ?? 'secondary';
+        @endphp
+
+        <div class="card mb-3 shadow-sm position-relative overflow-hidden border-0">
+          <div class="position-absolute top-0 bottom-0 start-0 bg-{{ $color }}" style="width: 5px;"></div>
+
+          <div class="card-body py-3 ps-4 pe-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="mb-0 text-nowrap">€ {{ number_format($alloc->amount, 0, ',', '.') }}</h6>
+              <small class="text-muted text-end">
+                {{ \Carbon\Carbon::parse($income->date)->locale('it')->isoFormat('MMM YYYY') }}
+              </small>
+            </div>
+
+            <p class="mb-1 fw-semibold">
+              <i class="bi bi-cash-coin text-success me-2"></i>
+              {{ $income->description ?? '–' }}
+            </p>
+
+            <div class="row small text-muted">
+              <div class="col-12">
+                <span class="badge bg-{{ $color }}">{{ $budgetName }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      @endforeach
+    @empty
+      <p class="text-center">Nessuna entrata registrata.</p>
+    @endforelse
+
+    {{-- Paginazione mobile --}}
+    <div class="d-flex justify-content-center mt-3">
       {{ $incomes->links() }}
     </div>
   </div>
 </div>
 
+
+
 {{-- Modal Nuova Entrata (come definito precedentemente) --}}
 <div class="modal fade" id="modalNewIncome" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
 
-    <div id="allocation-alert" class="alert alert-warning d-none">
-        Suddividere l'intero budget
-        </div>
+<div id="allocation-alert" class="alert alert-warning mt-2 d-none">
+  Suddividere l'intero budget
+</div>
 
     <form method="POST" action="{{ route('incomes.store') }}">
       @csrf
@@ -106,13 +170,13 @@
 <!-- Ripartizioni -->
 <div class="card mb-0">
   <div class="card-header">Ripartizione Budget</div>
-  <div class="card-body">
+  <div class="card-body p-4">
     @php
       // Percentuali di default
       $percentages = [
-        'personale' => 15,
+        'personale' => 11,
         'familiare' => 55,
-        'extra'     => 15,
+        'extra'     => 19,
         'risparmi'  => 15,
       ];
     @endphp
@@ -153,6 +217,20 @@
 @endsection
 
 @push('scripts')
+
+<!-- DataTables -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<!-- DataTables Responsive -->
+<link rel="stylesheet" href="https://cdn.datatables.net/responsive/2.5.0/css/responsive.bootstrap5.min.css">
+<script src="https://cdn.datatables.net/responsive/2.5.0/js/dataTables.responsive.min.js"></script>
+<script src="https://cdn.datatables.net/responsive/2.5.0/js/responsive.bootstrap5.min.js"></script>
+
+
+
+
 <script>
 $(function(){
   console.log("Inizializzazione script Entrate");
@@ -168,20 +246,26 @@ $(function(){
   }
 
   // Funzione che controlla somma vs totale
-  function validateSum() {
-    let total = parseFloat($('#amount').val()) || 0;
-    let sum   = 0;
-    $('.budget-input').each(function(){
-      sum += parseFloat($(this).val()) || 0;
-    });
-    if (Math.abs(sum - total) > 0.009) {
-      $('#allocation-alert').removeClass('d-none');
-      $('#save-income-btn').prop('disabled', true);
-    } else {
-      $('#allocation-alert').addClass('d-none');
-      $('#save-income-btn').prop('disabled', false);
-    }
+function validateSum() {
+  let total = parseFloat($('#amount').val()) || 0;
+  let sum   = 0;
+  $('.budget-input').each(function(){
+    sum += parseFloat($(this).val()) || 0;
+  });
+
+  let difference = total - sum;
+
+  if (Math.abs(difference) > 0.009) {
+    $('#allocation-alert')
+      .removeClass('d-none')
+      .text(`Devi ancora suddividere: € ${difference.toFixed(2)}`);
+    $('#save-income-btn').prop('disabled', true);
+  } else {
+    $('#allocation-alert').addClass('d-none');
+    $('#save-income-btn').prop('disabled', false);
   }
+}
+
 
   // Al change di Importo: ricalcola e valida
   $(document).on('input', '#amount', function(){
@@ -198,7 +282,30 @@ $(function(){
     validateSum();
   });
 });
+
+
+//datatable
+
+$(function () {
+
+$('#income-table').DataTable({
+  responsive: true,
+  ordering: false,
+  pageLength: 20,
+  lengthMenu: [5, 10, 25, 50, 100],
+  language: {
+    url: '//cdn.datatables.net/plug-ins/1.13.6/i18n/it-IT.json'
+  }
+});
+
+
+});
+
+
+
 </script>
+
+
 @endpush
 
 

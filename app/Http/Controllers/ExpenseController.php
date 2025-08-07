@@ -45,7 +45,7 @@ class ExpenseController extends Controller
             ->where('user_id',   $user->id)               // ← filtro aggiunto
             ->orderBy('date','desc')
             ->orderBy('id',   'desc')
-            ->paginate(20);
+            ->get();
 
         $expCats    = ExpenseCategory::orderBy('sort_order')->get();
         $budgetCats = BudgetCategory::orderBy('sort_order')->get();

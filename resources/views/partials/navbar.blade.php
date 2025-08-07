@@ -53,8 +53,23 @@ if ($user->role === 'capofamiglia' && $ownFamilies->isNotEmpty()) {
     <!-- Dropdown utente -->
     <li class="nav-item dropdown-user dropdown">
       <a class="nav-link dropdown-toggle hide-arrow p-0" href="#" data-bs-toggle="dropdown">
-        <div class="avatar avatar-online">
-          <img src="{{ asset('assets/img/avatars/1.png') }}" alt class="w-px-40 h-auto rounded-circle" />
+        <div class="avatar">
+@php
+    $name = auth()->user()->name;
+    switch ($name) {
+        case 'Giulio':
+            $avatar = '1.png';
+            break;
+        case 'Claudia':
+            $avatar = '2.png';
+            break;
+        default:
+            $avatar = 'polli.png';
+            break;
+    }
+@endphp
+
+<img src="{{ asset('assets/img/avatars/' . $avatar) }}" alt class="w-px-40 h-auto rounded-circle" style="margin-top: -6px!important;" />
         </div>
       </a>
       <ul class="dropdown-menu dropdown-menu-end">
@@ -64,8 +79,8 @@ if ($user->role === 'capofamiglia' && $ownFamilies->isNotEmpty()) {
           <div class="dropdown-item">
             <div class="d-flex">
               <div class="flex-shrink-0 me-3">
-                <div class="avatar avatar-online">
-                  <img src="{{ asset('assets/img/avatars/1.png') }}" alt class="w-px-40 h-auto rounded-circle" />
+                <div class="avatar">
+                  <img src="{{ asset('assets/img/avatars/1.png') }}" alt class="w-px-40 h-auto rounded-circle" style="margin-top: -4px!important;" />
                 </div>
               </div>
               <div class="flex-grow-1">
@@ -89,12 +104,6 @@ if ($user->role === 'capofamiglia' && $ownFamilies->isNotEmpty()) {
           <a class="dropdown-item" href="javascript:void(0);" onclick="return false;">
             <i class="bx bx-cog me-2"></i>
             <span>Impostazioni</span>
-          </a>
-        </li>
-        <li>
-          <a class="dropdown-item" href="javascript:void(0);" onclick="return false;">
-            <i class="bx bx-credit-card me-2"></i>
-            <span>Abbonamento</span>
           </a>
         </li>
 
