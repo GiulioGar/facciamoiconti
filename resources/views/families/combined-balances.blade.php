@@ -246,6 +246,34 @@
       </div>
     </div>
 
+    <!-- 📅 SPESE MENSILI -->
+<div class="card card-totals">
+  <div class="card-header">SPESA MENSILE</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table id="famese" class="table table-sm mb-0">
+        <thead>
+          <tr>
+            <th>Mese</th>
+            <th style="color:#008cbd">{{ $family->owner->nickname }}</th>
+            <th style="color:#bc29c6">{{ $firstMember->nickname ?? 'N/A' }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          @foreach($monthlyData as $row)
+            <tr>
+              <td>{{ $row['month'] }}</td>
+              <td>{{ number_format($row['owner'], 0, ',', '.') }}€</td>
+              <td>{{ number_format($row['member'], 0, ',', '.') }}€</td>
+            </tr>
+          @endforeach
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+
   </div>
 </div>
 @endsection

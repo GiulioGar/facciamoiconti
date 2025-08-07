@@ -507,7 +507,7 @@ table#expense-table thead th {
   border-bottom: 2px solid #dee2e6;
 }
 
-table#combi-table thead th, table#tot-table thead th{
+table#combi-table thead th, table#tot-table thead th , table#famese thead th{
   background-color: #f8f9fa !important;
   color: #343a40 !important;
   font-weight: 600;

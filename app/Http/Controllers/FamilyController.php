@@ -7,6 +7,8 @@ use App\Models\User;
 use App\Models\ExpenseCategory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
+
 
 class FamilyController extends Controller
 {
@@ -177,6 +179,35 @@ public function combinedBalances(Family $family)
     // Differenza: positivo = owner in debito, negativo = owner in credito
     $diff = $netOwner - $allTimeMemberSum;
 
+    $monthlyData = collect();
+
+for ($month = 1; $month <= 12; $month++) {
+    $monthName = ucfirst(Carbon::create()->month($month)->locale('it')->monthName);
+
+    $ownerMonthly = $family->owner
+        ->expenses()
+        ->whereIn('expense_category_id', $commonIds)
+        ->whereIn('budget_category_id', $budgetIds)
+        ->whereYear('date', now()->year)
+        ->whereMonth('date', $month)
+        ->sum('amount');
+
+    $memberMonthly = $firstMember
+        ? $firstMember->expenses()
+            ->whereIn('expense_category_id', $commonIds)
+            ->whereIn('budget_category_id', $budgetIds)
+            ->whereYear('date', now()->year)
+            ->whereMonth('date', $month)
+            ->sum('amount')
+        : 0;
+
+    $monthlyData->push([
+        'month' => $monthName,
+        'owner' => $ownerMonthly,
+        'member' => $memberMonthly,
+    ]);
+}
+
     return view('families.combined-balances', compact(
         'family',
         'categories',
@@ -188,7 +219,8 @@ public function combinedBalances(Family $family)
         'allTimeMemberSum',
         'credit',
         'diff',
-        'firstMember'
+        'firstMember',
+        'monthlyData'
     ));
 }
 
