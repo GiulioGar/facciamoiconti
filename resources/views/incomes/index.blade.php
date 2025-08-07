@@ -2,6 +2,13 @@
 
 @section('title', 'Entrate')
 
+@section('navbar-title')
+<span class="d-flex align-items-center gap-2">
+  <i class="bi bi-box-arrow-in-right fs-5 text-primary"></i>
+  <span class="fw-semibold">Le tue entrate</span>
+</span>
+@endsection
+
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
 

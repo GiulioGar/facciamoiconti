@@ -104,6 +104,14 @@
 </style>
 @endpush
 
+@section('navbar-title')
+  <span class="d-flex align-items-center gap-2">
+  <i class="bi bi-house-heart-fill fs-5 text-primary"></i>
+  <span class="fw-semibold">Conti di famiglia</span>
+</span>
+
+@endsection
+
 @section('content')
 
 

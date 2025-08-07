@@ -2,6 +2,14 @@
 
 @section('title', 'Home')
 
+
+@section('navbar-title')
+<span class="d-flex align-items-center gap-2">
+  <i class="bi bi-bank fs-5 text-primary"></i>
+  <span class="fw-semibold">Dashboard personale</span>
+</span>
+@endsection
+
 @section('content')
 
 @php

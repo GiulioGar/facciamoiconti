@@ -20,11 +20,22 @@ if ($user->role === 'capofamiglia' && $ownFamilies->isNotEmpty()) {
   </div>
 
   <!-- Messaggio a sinistra -->
-  <div class="navbar-nav flex-row align-items-center me-auto">
-    <h5 class="mb-0 text-primary d-none d-md-block">
-      <i class="bx bx-time-five me-2"></i> È ora di fare i conti...!
-    </h5>
+<div class="navbar-nav flex-row align-items-center me-auto">
+  <div class="page-heading d-none d-md-flex align-items-center">
+    @hasSection('navbar-title')
+      <h5 class="mb-0 fw-semibold text-dark">
+        @yield('navbar-title')
+      </h5>
+    @else
+      <h5 class="mb-0 fw-semibold text-dark">
+        <i class="bx bx-time-five me-2 text-primary"></i>
+        È ora di fare i conti...!
+      </h5>
+    @endif
   </div>
+</div>
+
+
 
   <!-- Lato destro -->
   <div class="navbar-nav flex-row align-items-center ms-auto">
