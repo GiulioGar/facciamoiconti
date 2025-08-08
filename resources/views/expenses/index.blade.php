@@ -76,7 +76,7 @@
           case 'extra':     $badgeColor = 'warning'; break;
           default:          $badgeColor = 'secondary';
         }
-    
+
                 $slug = $expense->expenseCategory->slug ?? null;
                 $iconData = category_icons()[$slug] ?? ['icon' => 'credit-card', 'color' => 'text-danger'];
 
@@ -92,13 +92,13 @@
         </div>
 
         <p class="mb-1 fw-semibold">
-          <i class="bi bi-{{ $iconData['icon'] }} {{ $iconData['color'] }} me-1"></i> {{ $expense->expenseCategory->name }} 
+          <i class="bi bi-{{ $iconData['icon'] }} {{ $iconData['color'] }} me-1"></i> {{ $expense->expenseCategory->name }}
         </p>
 
         <div class="row small text-muted">
           <div class="col-6">
             <strong>Budget</strong><br>
-           
+
           </div>
           <div class="col-6">
              <span class="badge bg-{{ $badgeColor }}">{{ $expense->budgetCategory->name }}</span>
@@ -118,7 +118,7 @@
 </div>
 
 
-  
+
 </div>
 
 {{-- Modal Nuova Spesa --}}
@@ -199,6 +199,19 @@
             </select>
             @error('budget_category_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
           </div>
+
+          {{-- Allocazione su bilancio finanziario --}}
+            <div class="mb-3">
+            <label for="wallet_allocation_exp" class="form-label">Allocazione saldo</label>
+            <select name="wallet_allocation" id="wallet_allocation_exp" class="form-select">
+                <option value="bank" selected>Conto Corrente</option>
+                <option value="cash">Contanti</option>
+                <option value="none">Non allocare</option>
+            </select>
+            <small class="text-muted d-block mt-1">
+                Scegli da dove sottrarre l’importo totale della spesa.
+            </small>
+            </div>
 
           {{-- Note con suggerimenti --}}
           <div class="mb-3">

@@ -23,4 +23,14 @@ class FinancialBalance extends Model
 
  protected $dates = ['accounting_month'];
 
+ protected $casts = [
+        'accounting_month' => 'date',
+        'bank_balance'     => 'decimal:2',
+        'other_accounts'   => 'decimal:2',
+        'cash'             => 'decimal:2',
+        'insurances'       => 'decimal:2',
+        'investments'      => 'decimal:2',
+        'debt_credit'      => 'decimal:2',
+    ];
+
 }

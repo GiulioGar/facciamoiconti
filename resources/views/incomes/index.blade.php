@@ -10,6 +10,30 @@
 @endsection
 
 @section('content')
+
+@php
+  use Illuminate\Support\Str;
+
+  // Totali per key "YYYY-MM|descrizione"
+  $groupTotals = [];
+  // Solo per il rendering: traccia quali gruppi hanno già mostrato il totale
+  $groupShown  = [];
+
+  foreach ($incomes as $inc) {
+    $monthKey = \Carbon\Carbon::parse($inc->date)->format('Y-m');
+    $descRaw  = trim((string)($inc->description ?? ''));
+    if ($descRaw === '') continue; // niente gruppo per descrizioni vuote
+
+    // normalizzazione chiave (case-insensitive, unicode safe)
+    $descKey  = mb_strtolower($descRaw, 'UTF-8');
+    $key      = $monthKey.'|'.$descKey;
+
+    foreach ($inc->allocations as $alloc) {
+      $groupTotals[$key] = ($groupTotals[$key] ?? 0) + (float)$alloc->amount;
+    }
+  }
+@endphp
+
 <div class="container-xxl flex-grow-1 container-p-y">
 
   {{-- Pulsante Nuova Entrata --}}
@@ -46,11 +70,31 @@
                   'Altro'     => 'secondary',
                 ];
                 $color = $budgetColors[$budgetName] ?? 'secondary';
+
+                $monthKey = \Carbon\Carbon::parse($income->date)->format('Y-m');
+                $descRaw  = trim((string)($income->description ?? ''));
+                $descKey  = $descRaw !== '' ? mb_strtolower($descRaw, 'UTF-8') : null;
+                $key      = $descKey ? $monthKey.'|'.$descKey : null;
+
+                $showTotal = false;
+                $totalForGroup = 0;
+
+                if ($key && array_key_exists($key, $groupTotals)) {
+                    if (empty($groupShown[$key])) {
+                    $showTotal = true;
+                    $groupShown[$key] = true; // da ora in poi non lo mostriamo più per questo gruppo
+                    $totalForGroup = $groupTotals[$key];
+                    }
+                }
               @endphp
+
               <tr>
                 <td class="force-show">
-                  <i class="bi bi-cash-coin text-success me-2"></i>
-                  {{ $income->description ?? '–' }}
+                <i class="bi bi-cash-coin text-success me-2"></i>
+                {{ $income->description ?? '–' }}
+                @if($showTotal)
+                    <span class="text-muted ms-1">(tot. € {{ number_format($totalForGroup, 0, ',', '.') }})</span>
+                @endif
                 </td>
                 <td class="force-show">€ {{ number_format($alloc->amount, 0, ',', '.') }}</td>
                 <td class="force-show">
@@ -87,6 +131,22 @@
             'Altro'     => 'secondary',
           ];
           $color = $budgetColors[$budgetName] ?? 'secondary';
+
+        $monthKey = \Carbon\Carbon::parse($income->date)->format('Y-m');
+        $descRaw  = trim((string)($income->description ?? ''));
+        $descKey  = $descRaw !== '' ? mb_strtolower($descRaw, 'UTF-8') : null;
+        $key      = $descKey ? $monthKey.'|'.$descKey : null;
+
+        $showTotal = false;
+        $totalForGroup = 0;
+
+        if ($key && array_key_exists($key, $groupTotals)) {
+            if (empty($groupShown[$key])) {
+            $showTotal = true;
+            $groupShown[$key] = true;
+            $totalForGroup = $groupTotals[$key];
+            }
+        }
         @endphp
 
         <div class="card mb-3 shadow-sm position-relative overflow-hidden border-0">
@@ -101,8 +161,11 @@
             </div>
 
             <p class="mb-1 fw-semibold">
-              <i class="bi bi-cash-coin text-success me-2"></i>
-              {{ $income->description ?? '–' }}
+            <i class="bi bi-cash-coin text-success me-2"></i>
+            {{ $income->description ?? '–' }}
+            @if($showTotal)
+                <span class="text-muted ms-1">(tot. € {{ number_format($totalForGroup, 0, ',', '.') }})</span>
+            @endif
             </p>
 
             <div class="row small text-muted">
@@ -130,9 +193,6 @@
 <div class="modal fade" id="modalNewIncome" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
 
-<div id="allocation-alert" class="alert alert-warning mt-2 d-none">
-  Suddividere l'intero budget
-</div>
 
     <form method="POST" action="{{ route('incomes.store') }}">
       @csrf
@@ -173,6 +233,19 @@
                    value="{{ old('description') }}">
             @error('description')<div class="invalid-feedback">{{ $message }}</div>@enderror
           </div>
+
+          {{-- Allocazione su bilancio finanziario --}}
+<div class="mb-3">
+  <label for="wallet_allocation" class="form-label">Allocazione saldo</label>
+  <select name="wallet_allocation" id="wallet_allocation" class="form-select">
+    <option value="bank" selected>Conto Corrente</option>
+    <option value="cash">Contanti</option>
+    <option value="none">Non allocare</option>
+  </select>
+  <small class="text-muted d-block mt-1">
+    Scegli dove aggiungere l’importo totale dell’entrata nel bilancio finanziario.
+  </small>
+</div>
 
 <!-- Ripartizioni -->
 <div class="card mb-0">

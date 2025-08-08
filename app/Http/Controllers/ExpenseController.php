@@ -9,6 +9,8 @@ use App\Models\ExpenseCategory;
 use App\Models\BudgetCategory;
 use App\Models\Family;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use App\Models\FinancialBalance;
 
 class ExpenseController extends Controller
 {
@@ -98,40 +100,86 @@ class ExpenseController extends Controller
     /**
      * Salva la nuova spesa (store)
      */
-    public function store(Request $request)
-    {
-        $data = $request->validate([
-            'amount'               => 'required|numeric|min:0.01',
-            'date'                 => 'required|date',
-            'expense_category_id'  => 'required|exists:expense_categories,id',
-            'budget_category_id'   => 'required|exists:budget_categories,id',
-            'note'                 => 'nullable|string',
-            'family_id'            => 'required|exists:families,id',
-        ]);
+public function store(Request $request)
+{
+    $data = $request->validate([
+        'amount'               => 'required|numeric|min:0.01',
+        'date'                 => 'required|date', // arriva "YYYY-MM" dal form, lo normalizziamo sotto
+        'expense_category_id'  => 'required|exists:expense_categories,id',
+        'budget_category_id'   => 'required|exists:budget_categories,id',
+        'note'                 => 'nullable|string',
+        'family_id'            => 'required|exists:families,id',
+        'wallet_allocation'    => 'required|in:bank,cash,none',
+    ]);
 
+    $userId   = Auth::id();
+    $familyId = (int) $data['family_id'];
+    $amount   = (float) $data['amount'];
+
+    // Normalizza "YYYY-MM" -> primo giorno del mese
+    $normalizedDate = Carbon::createFromFormat('Y-m', $data['date'])
+                            ->startOfMonth()
+                            ->toDateString();
+
+    DB::transaction(function () use ($data, $userId, $familyId, $amount, $normalizedDate) {
+
+        // 1) Crea la SPESA
         $expCat = ExpenseCategory::findOrFail($data['expense_category_id']);
-        $data['user_id'] = Auth::id();
-
-        // Converto YYYY-MM in YYYY-MM-01
-        $normalizedDate = Carbon::createFromFormat('Y-m', $data['date'])
-                                ->startOfMonth()
-                                ->toDateString();
-
-        Expense::create([
+        $expense = Expense::create([
             'description'           => $expCat->name,
-            'amount'                => $data['amount'],
+            'amount'                => $amount,
             'date'                  => $normalizedDate,
             'expense_category_id'   => $data['expense_category_id'],
             'budget_category_id'    => $data['budget_category_id'],
             'note'                  => $data['note'] ?? null,
-            'family_id'             => $data['family_id'],
-            'user_id'               => $data['user_id'],
+            'family_id'             => $familyId,
+            'user_id'               => $userId,
         ]);
 
-        return redirect()
-               ->route('expenses.index')
-               ->with('success','Spesa registrata con successo');
-    }
+        // 2) Crea nuova RIGA in financial_balances (snapshot) se va allocata
+        if ($data['wallet_allocation'] !== 'none') {
+
+            // Prendi l'ultima riga per user+family
+            $last = FinancialBalance::where('user_id', $userId)
+                    ->where('family_id', $familyId)
+                    ->orderByDesc('id')
+                    ->first();
+
+            // Base (fallback 0 se non c'è alcuna riga)
+            $base = [
+                'bank_balance'   => (float) ($last->bank_balance   ?? 0),
+                'other_accounts' => (float) ($last->other_accounts ?? 0),
+                'cash'           => (float) ($last->cash           ?? 0),
+                'insurances'     => (float) ($last->insurances     ?? 0),
+                'investments'    => (float) ($last->investments    ?? 0),
+                'debt_credit'    => (float) ($last->debt_credit    ?? 0),
+            ];
+
+            // Mappa colonna target
+            $columnMap = [
+                'bank' => 'bank_balance',
+                'cash' => 'cash',
+            ];
+            $targetCol = $columnMap[$data['wallet_allocation']] ?? null;
+
+            if ($targetCol) {
+                // SOTTRAI l'importo
+                $base[$targetCol] = round($base[$targetCol] - $amount, 2);
+            }
+
+            FinancialBalance::create(array_merge($base, [
+                'user_id'          => $userId,
+                'family_id'        => $familyId,
+                'accounting_month' => Carbon::parse($normalizedDate)->toDateString(), // primo giorno del mese
+            ]));
+        }
+    });
+
+    return redirect()
+           ->route('expenses.index')
+           ->with('success','Spesa registrata con successo');
+}
+
 
     // … eventuali metodi edit, update, destroy …
 }

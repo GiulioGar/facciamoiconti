@@ -9,6 +9,8 @@ use App\Models\IncomeAllocation;
 use App\Models\BudgetCategory;
 use Carbon\Carbon;
 use App\Models\Family;
+use Illuminate\Support\Facades\DB;
+use App\Models\FinancialBalance;
 
 class IncomeController extends Controller
 {
@@ -39,29 +41,79 @@ public function store(Request $request)
         'date'              => 'required|date',
         'allocations.*'     => 'nullable|numeric|min:0',
         'family_id'         => 'required|exists:families,id',
+        'wallet_allocation' => 'required|in:bank,cash,none',
     ]);
 
-    $income = Income::create([
-        'description' => $data['description'],
-        'amount'      => $data['amount'],
-        'date'        => $data['date'],
-        'family_id'   => $data['family_id'],
-        'user_id'     => Auth::id(),
-    ]);
+    DB::transaction(function() use ($data) {
 
-    // Precarico uno mappatura id → slug (o qualunque stringa voglia tu usare come "type")
-    $typeMap = BudgetCategory::pluck('slug', 'id')->toArray();
+        // 1) Crea l'entrata
+        $income = Income::create([
+            'description' => $data['description'],
+            'amount'      => $data['amount'],
+            'date'        => $data['date'],
+            'family_id'   => $data['family_id'],
+            'user_id'     => Auth::id(),
+        ]);
 
-    foreach ($data['allocations'] as $categoryId => $value) {
-        if ($value > 0) {
-            $income->allocations()->create([
-                'category_id' => $categoryId,
-                'amount'      => $value,
-                // qui associo sempre un "type" valido
-                'type'        => $typeMap[$categoryId] ?? 'category',
-            ]);
+        // 2) Allocazioni budget (come già facevi)
+        $typeMap = BudgetCategory::pluck('slug', 'id')->toArray();
+
+        if (!empty($data['allocations'])) {
+            foreach ($data['allocations'] as $categoryId => $value) {
+                if ($value > 0) {
+                    $income->allocations()->create([
+                        'category_id' => $categoryId,
+                        'amount'      => $value,
+                        'type'        => $typeMap[$categoryId] ?? 'category',
+                    ]);
+                }
+            }
         }
-    }
+
+        // 3) Scrivi una NUOVA riga in financial_balances se richiesto
+        if ($data['wallet_allocation'] !== 'none') {
+
+            $userId   = Auth::id();
+            $familyId = (int) $data['family_id'];
+            $amount   = (float) $data['amount'];
+
+            // Ultima riga per user+family
+            $last = FinancialBalance::where('user_id', $userId)
+                    ->where('family_id', $familyId)
+                    ->orderByDesc('id')
+                    ->first();
+
+            // Base: se non esiste nulla, parti da 0
+            $base = [
+                'bank_balance'   => (float) ($last->bank_balance   ?? 0),
+                'other_accounts' => (float) ($last->other_accounts ?? 0),
+                'cash'           => (float) ($last->cash           ?? 0),
+                'insurances'     => (float) ($last->insurances     ?? 0),
+                'investments'    => (float) ($last->investments    ?? 0),
+                'debt_credit'    => (float) ($last->debt_credit    ?? 0),
+            ];
+
+            // Colonna target in base alla scelta
+            $columnMap = [
+                'bank' => 'bank_balance',
+                'cash' => 'cash',
+            ];
+            $targetCol = $columnMap[$data['wallet_allocation']] ?? null;
+
+            if ($targetCol) {
+                $base[$targetCol] = round($base[$targetCol] + $amount, 2);
+            }
+
+            // accounting_month = primo giorno del mese dell'entrata
+            $accountingMonth = \Carbon\Carbon::parse($data['date'])->startOfMonth()->toDateString();
+
+            FinancialBalance::create(array_merge($base, [
+                'user_id'         => $userId,
+                'family_id'       => $familyId,
+                'accounting_month'=> $accountingMonth,
+            ]));
+        }
+    });
 
     return back()->with('success', 'Entrata aggiunta con successo');
 }
