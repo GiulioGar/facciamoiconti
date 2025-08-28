@@ -8,7 +8,7 @@
             </a>
 
             <a href="javascript:void(0);" class="layout-menu-toggle menu-link text-large ms-auto">
-              <i class="bx bx-chevron-left d-block d-xl-none align-middle"></i> 
+              <i class="bx bx-chevron-left d-block d-xl-none align-middle"></i>
             </a>
           </div>
 
@@ -69,6 +69,29 @@
   @endif
 @endauth
 
+<!-- Fantacalcio -->
+@php($hasFanta = \Illuminate\Support\Facades\Route::has('fantacalcio.index'))
+<li class="menu-header small text-uppercase">
+  <span class="menu-header-text">ALTRO</span>
+</li>
+
+@if ($hasFanta)
+  <li class="menu-item {{ request()->routeIs('fantacalcio.*') ? 'active' : '' }}">
+    <a href="{{ route('fantacalcio.index') }}" class="menu-link">
+      <i class="menu-icon tf-icons bx bx-football"></i>
+      <div class="text-truncate">Fantacalcio</div>
+    </a>
+  </li>
+@else
+  {{-- Variante: link “spento” (visibile ma non cliccabile) --}}
+  <li class="menu-item">
+    <a href="#" class="menu-link disabled" tabindex="-1" aria-disabled="true" title="Sezione non disponibile">
+      <i class="menu-icon tf-icons bx bx-football"></i>
+      <div class="text-truncate">Fantacalcio</div>
+    </a>
+  </li>
+@endif
+
 
 
             <!-- Misc -->
@@ -82,6 +105,8 @@
                 <div class="text-truncate" data-i18n="Support">Area Admin</div>
               </a>
             </li>
-          </ul>
-        </aside>
-        <!-- / Menu -->
+
+
+</ul>
+</aside>
+ <!-- / Menu -->
