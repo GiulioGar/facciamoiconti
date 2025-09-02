@@ -66,6 +66,15 @@
         <div class="text-truncate" data-i18n="Conti uniti">Spese Comuni</div>
       </a>
     </li>
+
+<li class="menu-item {{ request()->routeIs('families.summary') ? 'active' : '' }}">
+  <a href="{{ route('families.summary') }}" class="menu-link">
+    <i class="menu-icon bx bx-pie-chart-alt-2"></i>
+    <div>Budget Famiglia</div>
+  </a>
+</li>
+
+
   @endif
 @endauth
 

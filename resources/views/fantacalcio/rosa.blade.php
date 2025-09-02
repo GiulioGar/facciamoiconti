@@ -12,23 +12,30 @@
 @push('styles')
 <style>
   .budget-pill { font-weight: 600; }
-  .slot-card  { border-left: 6px solid transparent; margin-bottom: 1rem; } /* spazio tra card */
+  .slot-card  { border-left: 6px solid transparent; margin-bottom: 1rem; border-radius: .5rem; }
   .slot-title { font-weight: 700; }
   .slot-hint  { font-size:.9rem; color:#6c757d; }
   .role-header { background:#343a40; color:#f8f9fa; }
+  .chip { font-size:.75rem; padding:.2rem .5rem; border-radius: 999px; display:inline-block; }
 
-  /* Colori per RUOLO sulle card (bordo sinistro) */
-  .role-P .slot-card { border-left-color: #0ea5e9; } /* azzurro */
-  .role-D .slot-card { border-left-color: #22c55e; } /* verde */
-  .role-C .slot-card { border-left-color: #a855f7; } /* viola */
-  .role-A .slot-card { border-left-color: #f59e0b; } /* arancio */
+  /* Colori per RUOLO (bordo e leggero sfondo) */
+  .role-Por .slot-card { border-left-color: #0ea5e9; background: rgba(14,165,233,.06); }
+  .role-Dc  .slot-card { border-left-color: #22c55e; background: rgba(34,197,94,.06); }
+  .role-Ds  .slot-card { border-left-color: #16a34a; background: rgba(22,163,74,.06); }
+  .role-Dd  .slot-card { border-left-color: #10b981; background: rgba(16,185,129,.06); }
+  .role-E   .slot-card { border-left-color: #38bdf8; background: rgba(56,189,248,.06); }
+  .role-M   .slot-card { border-left-color: #64748b; background: rgba(100,116,139,.06); }
+  .role-C   .slot-card { border-left-color: #a855f7; background: rgba(168,85,247,.06); }
+  .role-T   .slot-card { border-left-color: #f43f5e; background: rgba(244,63,94,.06); }
+  .role-W   .slot-card { border-left-color: #f59e0b; background: rgba(245,158,11,.06); }
+  .role-A   .slot-card { border-left-color: #fb7185; background: rgba(251,113,133,.06); }
+  .role-Pc  .slot-card { border-left-color: #ef4444; background: rgba(239,68,68,.06); }
 
-  .tag-spesa { min-width: 90px; text-align: right; font-weight: 600; }
+  .tag-spesa { min-width: 120px; text-align: right; font-weight: 600; }
   .assigned .slot-title { color:#111827; }
   .assigned .slot-hint  { color:#374151; }
 </style>
 @endpush
-
 
 @section('content')
 <div class="container-xxl flex-grow-1 container-p-y">
@@ -36,7 +43,7 @@
   {{-- Navbar interna --}}
   @include('fantacalcio.partials.navbar')
 
-  {{-- RIEPILOGO SQUADRA --}}
+  {{-- RIEPILOGO SQUADRA (solo totali) --}}
   <div class="card mb-4">
     <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
       <div class="d-flex align-items-center gap-2">
@@ -45,218 +52,91 @@
       </div>
       <div class="d-flex flex-wrap gap-2">
         <span class="badge bg-primary budget-pill">Crediti: {{ $team['budget'] }}</span>
-        <span class="badge bg-danger budget-pill">Spesi: {{ $team['spent'] }}</span>
+        <span class="badge bg-danger  budget-pill">Spesi: {{ $team['spent'] }}</span>
         <span class="badge bg-success budget-pill">Rimanenti: {{ $team['remaining'] }}</span>
       </div>
     </div>
   </div>
 
-  {{-- PORTIERI --}}
-<div class="card mb-4 role-P">
-  {{-- header P come sopra --}}
-  <div class="card-header d-flex flex-wrap justify-content-between align-items-center role-header">
-    <span class="fw-semibold"><i class="bi bi-person-badge me-2"></i> {{ $roles['P']['label'] }}</span>
-    <div class="d-flex flex-wrap gap-2">
-      <span class="badge bg-light text-dark">Consigliato: {{ $adviceByRole['P']['suggested'] }}</span>
-      <span class="badge bg-warning text-dark">Speso: {{ $adviceByRole['P']['spent'] }}</span>
-      <span class="badge bg-success">Rimanente: {{ $adviceByRole['P']['remaining'] }}</span>
+  {{-- ELENCO SLOT (26) IN COLONNA --}}
+  <div class="card mb-4">
+    <div class="card-header role-header d-flex align-items-center justify-content-between">
+      <span class="fw-semibold"><i class="bi bi-list-check me-2"></i> Slots rosa (26)</span>
+      <small class="text-light-50">Il “Consigliato” è rinormalizzato sul budget rimanente degli slot non assegnati</small>
     </div>
-  </div>
-<br/>
-  <div class="card-body">
-@foreach($adviceByRole['P']['slot_suggested'] as $i => $suggest)
-  @php $assigned = $assignedMap['P'][$i] ?? null; @endphp
-  <div class="card slot-card {{ $assigned ? 'assigned' : '' }}">
-    <div class="card-body py-2 d-flex justify-content-between align-items-center gap-3 flex-wrap">
-      <div class="flex-grow-1">
-        @if($assigned)
-          <div class="slot-title">{{ $assigned['nome'] }} — {{ $assigned['roles'] }}</div>
-          <div class="slot-hint">{{ $assigned['team'] }}</div>
-        @else
-          <div class="slot-title">Slot {{ $i+1 }} — Consigliata: ~{{ $suggest }}</div>
-          <div class="slot-hint">{{ $guidelines['P'][$i]['hint'] ?? '' }}</div>
-        @endif
-      </div>
 
-      <div class="tag-spesa">
-        @if($assigned) € {{ $assigned['costo'] }} @endif
-      </div>
+    <div class="card-body">
 
-      @if($assigned)
-        <button class="btn btn-sm btn-secondary" disabled>Assegnato</button>
-      @else
-        <button class="btn btn-sm btn-outline-primary select-player-btn" data-role="P" data-slot="{{ $i }}">Seleziona</button>
-      @endif
-    </div>
-  </div>
-@endforeach
+      @foreach($slots as $slot)
+        @php
+          $assigned = $assignedByIndex[$slot['index']] ?? null;
+          $roleClass = 'role-' . $slot['role_token'];
+        @endphp
 
-  </div>
-</div>
+        <div class="{{ $roleClass }}">
+          <div class="card slot-card {{ $assigned ? 'assigned' : '' }}">
+            <div class="card-body py-2 d-flex justify-content-between align-items-center gap-3 flex-wrap">
 
+              {{-- SINISTRA --}}
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <span class="chip bg-light border">
+                    {{ $slot['role_token'] }}
+                  </span>
+                  <span class="chip bg-light border">
+                    {{ $slot['level'] }}
+                  </span>
+                </div>
 
-  {{-- DIFENSORI --}}
-<div class="card mb-4 role-D">
-  {{-- header come sopra ma con chiave D --}}
-  <div class="card-header d-flex flex-wrap justify-content-between align-items-center role-header">
-    <span class="fw-semibold"><i class="bi bi-shield-lock me-2"></i> {{ $roles['D']['label'] }}</span>
-    <div class="d-flex flex-wrap gap-2">
-      <span class="badge bg-light text-dark">Consigliato: {{ $adviceByRole['D']['suggested'] }}</span>
-      <span class="badge bg-warning text-dark">Speso: {{ $adviceByRole['D']['spent'] }}</span>
-      <span class="badge bg-success">Rimanente: {{ $adviceByRole['D']['remaining'] }}</span>
-    </div>
-  </div>
-<br/>
-<div class="card-body">
-    @foreach($guidelines['D'] as $i => $slot)
-      @php
-        $assigned = $assignedMap['D'][$i] ?? null;
-        $suggest  = $adviceByRole['D']['slot_suggested'][$i] ?? 0;
-      @endphp
+                @if($assigned)
+                  <div class="slot-title">
+                    #{{ $slot['index']+1 }} — {{ $assigned['nome'] }}
+                    <small class="text-muted">({{ $assigned['roles'] }}, {{ $assigned['team'] }})</small>
+                  </div>
+                  <div class="slot-hint">
+                    Ruolo slot: <strong>{{ $slot['role_token'] }}</strong> — {{ $slot['level'] }}
+                  </div>
+                @else
+                  <div class="slot-title">
+                    #{{ $slot['index']+1 }} — {{ $slot['title'] }}
+                  </div>
+                  <div class="slot-hint">
+                    Ruolo: <strong>{{ $slot['role_token'] }}</strong> — Livello: <strong>{{ $slot['level'] }}</strong>
+                    @if(!empty($slot['hint'])) <br><span>{{ $slot['hint'] }}</span> @endif
+                  </div>
+                @endif
+              </div>
 
-      <div class="card slot-card {{ $assigned ? 'assigned' : '' }}">
-        <div class="card-body py-2">
-          <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
-            <div class="flex-grow-1">
+              {{-- DESTRA: consigliato / costo --}}
+              <div class="tag-spesa">
+                @if($assigned)
+                  € {{ $assigned['costo'] }}
+                @else
+                  Consigliato: ~€ {{ number_format($slot['suggested'], 0, ',', '.') }}
+                @endif
+              </div>
+
+              {{-- AZIONE --}}
               @if($assigned)
-                <div class="slot-title">{{ $assigned['nome'] }} — {{ $assigned['roles'] }}</div>
-                <div class="slot-hint">{{ $assigned['team'] }}</div>
+                <button class="btn btn-sm btn-secondary" disabled>Assegnato</button>
               @else
-                <div class="slot-title">Slot {{ $i+1 }} — Consigliata: ~{{ $suggest }}</div>
-                <div class="slot-hint">{{ $slot['hint'] }}</div>
+                <button
+                  class="btn btn-sm btn-outline-primary select-player-btn"
+                  data-role-token="{{ $slot['role_token'] }}"
+                  data-slot="{{ $slot['index'] }}"
+                >
+                  Seleziona
+                </button>
               @endif
-            </div>
 
-            <div class="tag-spesa">
-              @if($assigned)
-                € {{ $assigned['costo'] }}
-              @endif
             </div>
-
-            @if($assigned)
-              <button class="btn btn-sm btn-secondary" disabled>Assegnato</button>
-            @else
-              <button class="btn btn-sm btn-outline-primary select-player-btn" data-role="D" data-slot="{{ $i }}">
-                Seleziona
-              </button>
-            @endif
           </div>
         </div>
-      </div>
-    @endforeach
-  </div>
 
-</div>
+      @endforeach
 
-
-  {{-- CENTROCAMPISTI --}}
-<div class="card mb-4 role-C">
-  {{-- header come sopra ma con chiave D --}}
-  <div class="card-header d-flex flex-wrap justify-content-between align-items-center role-header">
-    <span class="fw-semibold"><i class="bi bi-shield-lock me-2"></i> {{ $roles['C']['label'] }}</span>
-    <div class="d-flex flex-wrap gap-2">
-      <span class="badge bg-light text-dark">Consigliato: {{ $adviceByRole['C']['suggested'] }}</span>
-      <span class="badge bg-warning text-dark">Speso: {{ $adviceByRole['C']['spent'] }}</span>
-      <span class="badge bg-success">Rimanente: {{ $adviceByRole['C']['remaining'] }}</span>
     </div>
   </div>
-<br/>
-<div class="card-body">
-    @foreach($guidelines['C'] as $i => $slot)
-      @php
-        $assigned = $assignedMap['C'][$i] ?? null;
-        $suggest  = $adviceByRole['C']['slot_suggested'][$i] ?? 0;
-      @endphp
-
-      <div class="card slot-card {{ $assigned ? 'assigned' : '' }}">
-        <div class="card-body py-2">
-          <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
-            <div class="flex-grow-1">
-              @if($assigned)
-                <div class="slot-title">{{ $assigned['nome'] }} — {{ $assigned['roles'] }}</div>
-                <div class="slot-hint">{{ $assigned['team'] }}</div>
-              @else
-                <div class="slot-title">Slot {{ $i+1 }} — Consigliata: ~{{ $suggest }}</div>
-                <div class="slot-hint">{{ $slot['hint'] }}</div>
-              @endif
-            </div>
-
-            <div class="tag-spesa">
-              @if($assigned)
-                € {{ $assigned['costo'] }}
-              @endif
-            </div>
-
-            @if($assigned)
-              <button class="btn btn-sm btn-secondary" disabled>Assegnato</button>
-            @else
-              <button class="btn btn-sm btn-outline-primary select-player-btn" data-role="C" data-slot="{{ $i }}">
-                Seleziona
-              </button>
-            @endif
-          </div>
-        </div>
-      </div>
-    @endforeach
-  </div>
-
-</div>
-
-
-  {{-- ATTACCANTI --}}
-<div class="card mb-4 role-A">
-  {{-- header come sopra ma con chiave A --}}
-  <div class="card-header d-flex flex-wrap justify-content-between align-items-center role-header">
-    <span class="fw-semibold"><i class="bi bi-shield-lock me-2"></i> {{ $roles['A']['label'] }}</span>
-    <div class="d-flex flex-wrap gap-2">
-      <span class="badge bg-light text-dark">Consigliato: {{ $adviceByRole['A']['suggested'] }}</span>
-      <span class="badge bg-warning text-dark">Speso: {{ $adviceByRole['A']['spent'] }}</span>
-      <span class="badge bg-success">Rimanente: {{ $adviceByRole['A']['remaining'] }}</span>
-    </div>
-  </div>
-<br/>
-<div class="card-body">
-    @foreach($guidelines['A'] as $i => $slot)
-      @php
-        $assigned = $assignedMap['A'][$i] ?? null;
-        $suggest  = $adviceByRole['A']['slot_suggested'][$i] ?? 0;
-      @endphp
-
-      <div class="card slot-card {{ $assigned ? 'assigned' : '' }}">
-        <div class="card-body py-2">
-          <div class="d-flex justify-content-between align-items-center gap-3 flex-wrap">
-            <div class="flex-grow-1">
-              @if($assigned)
-                <div class="slot-title">{{ $assigned['nome'] }} — {{ $assigned['roles'] }}</div>
-                <div class="slot-hint">{{ $assigned['team'] }}</div>
-              @else
-                <div class="slot-title">Slot {{ $i+1 }} — Consigliata: ~{{ $suggest }}</div>
-                <div class="slot-hint">{{ $slot['hint'] }}</div>
-              @endif
-            </div>
-
-            <div class="tag-spesa">
-              @if($assigned)
-                € {{ $assigned['costo'] }}
-              @endif
-            </div>
-
-            @if($assigned)
-              <button class="btn btn-sm btn-secondary" disabled>Assegnato</button>
-            @else
-              <button class="btn btn-sm btn-outline-primary select-player-btn" data-role="A" data-slot="{{ $i }}">
-                Seleziona
-              </button>
-            @endif
-          </div>
-        </div>
-      </div>
-    @endforeach
-  </div>
-
-</div>
-
-
 </div>
 @endsection
 
@@ -266,7 +146,7 @@
     <form class="modal-content" method="POST" action="{{ route('fantacalcio.rosa.add') }}">
       @csrf
       <input type="hidden" name="external_id" id="modal-external-id">
-      <input type="hidden" name="role" id="modal-role">
+      <input type="hidden" name="role_token" id="modal-role-token">
       <input type="hidden" name="slot_index" id="modal-slot-index">
 
       <div class="modal-header">
@@ -276,17 +156,17 @@
 
       <div class="modal-body">
         <div class="mb-3">
-        <label for="modal-player" class="form-label">Giocatore (solo disponibili)</label>
+          <label for="modal-player" class="form-label">Giocatore (solo disponibili)</label>
 
-        {{-- Campo ricerca nome --}}
-        <input type="text" id="modal-search" class="form-control mb-2" placeholder="Cerca per nome (es. Lautaro, Buongiorno…)" autocomplete="off">
+          {{-- Campo ricerca nome --}}
+          <input type="text" id="modal-search" class="form-control mb-2" placeholder="Cerca per nome (es. Lautaro, Buongiorno…)" autocomplete="off">
 
-        <select id="modal-player" class="form-select" required>
+          <select id="modal-player" class="form-select" required>
             <option value="" selected>Seleziona...</option>
-        </select>
-        <div class="form-text">
-            Filtrato per <strong>ruolo</strong> e <strong>stato = 0</strong>. Digita per cercare.
-        </div>
+          </select>
+          <div class="form-text">
+            Filtrato per <strong>ruolo slot</strong> (token) e <strong>stato = 0</strong>. Digita per cercare.
+          </div>
         </div>
 
         <div class="mb-3">
@@ -307,13 +187,12 @@
 <script>
 (function(){
   let bsModal;
-  const $modal = document.getElementById('modalSelectPlayer');
-  const $role  = document.getElementById('modal-role');
-  const $sel   = document.getElementById('modal-player');
-  const $extId = document.getElementById('modal-external-id');
-  const $costo = document.getElementById('modal-costo');
-  const $submit= document.getElementById('modal-submit');
-  const $search= document.getElementById('modal-search');
+  const $modal  = document.getElementById('modalSelectPlayer');
+  const $sel    = document.getElementById('modal-player');
+  const $extId  = document.getElementById('modal-external-id');
+  const $costo  = document.getElementById('modal-costo');
+  const $submit = document.getElementById('modal-submit');
+  const $search = document.getElementById('modal-search');
 
   function resetModal() {
     $sel.innerHTML = '<option value="" selected>Seleziona...</option>';
@@ -328,13 +207,12 @@
     let t; return function(){ const c=this,a=arguments; clearTimeout(t); t=setTimeout(()=>fn.apply(c,a),delay); };
   }
 
-  // carica giocatori via AJAX con (role, q)
-  function loadPlayers(role, q) {
+  // carica giocatori via AJAX con (role_token, q)
+  function loadPlayers(roleToken, q) {
     const url = new URL("{{ route('fantacalcio.rosa.players') }}", window.location.origin);
-    url.searchParams.set('role', role || '');
+    url.searchParams.set('role_token', roleToken || '');
     if (q) url.searchParams.set('q', q);
 
-    // feedback di caricamento
     $sel.innerHTML = '<option value="">Caricamento...</option>';
 
     fetch(url.toString(), { headers: { 'Accept': 'application/json' } })
@@ -353,41 +231,39 @@
       });
   }
 
-  // Apri modale → set role, reset e primo load
+  // Apri modale → set role_token e slot, reset e primo load
   document.querySelectorAll('.select-player-btn').forEach(btn => {
     btn.addEventListener('click', function(){
-    const role = this.getAttribute('data-role'); // P/D/C/A
-    const slot = this.getAttribute('data-slot'); // 0,1,2,...
-    document.getElementById('modal-role').value = role;
-    document.getElementById('modal-slot-index').value = slot;
-      $role.value = role;
-      resetModal();
+      const roleToken = this.getAttribute('data-role-token'); // Por, Dc, Ds, Dd, E, M, C, T, W, A, Pc
+      const slotIndex = this.getAttribute('data-slot');       // 0..25
+      document.getElementById('modal-role-token').value = roleToken;
+      document.getElementById('modal-slot-index').value = slotIndex;
 
+      resetModal();
       bsModal = new bootstrap.Modal($modal);
       bsModal.show();
 
-      loadPlayers(role, ''); // primo caricamento senza filtro nome
+      loadPlayers(roleToken, '');
     });
   });
 
   // ricerca con debounce mentre digiti
   if ($search) {
     $search.addEventListener('keyup', debounce(function(){
-      const role = $role.value;
+      const roleToken = document.getElementById('modal-role-token').value;
       const q    = $search.value.trim();
-      loadPlayers(role, q);
+      loadPlayers(roleToken, q);
     }, 300));
   }
 
   // Abilita submit quando selezioni e inserisci costo
   $sel.addEventListener('change', function(){
-    $extId.value = this.value || '';
-    $submit.disabled = !($extId.value && $costo.value !== '' && Number($costo.value) >= 0);
+    document.getElementById('modal-external-id').value = this.value || '';
+    $submit.disabled = !(document.getElementById('modal-external-id').value && $costo.value !== '' && Number($costo.value) >= 0);
   });
   $costo.addEventListener('input', function(){
-    $submit.disabled = !($extId.value && this.value !== '' && Number(this.value) >= 0);
+    $submit.disabled = !(document.getElementById('modal-external-id').value && this.value !== '' && Number(this.value) >= 0);
   });
 })();
 </script>
 @endpush
-

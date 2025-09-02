@@ -11,6 +11,7 @@ use App\Http\Controllers\IncomeController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\InvestmentController;
 use App\Http\Controllers\FantacalcioController;
+use App\Http\Controllers\FamilyBudgetController;
 
 /*
 |--------------------------------------------------------------------------
@@ -71,6 +72,10 @@ Route::middleware('auth')->group(function () {
 
     // Investimenti
     Route::post('/investments', [InvestmentController::class, 'store'])->name('investments.store');
+
+    //Budget Generale
+    Route::get('/families/summary', [FamilyBudgetController::class, 'index'])
+        ->name('families.summary');
 
     /**
      * ===========================

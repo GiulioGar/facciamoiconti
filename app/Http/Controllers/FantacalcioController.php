@@ -372,167 +372,100 @@ public function rosa()
     $teamName   = 'Azzurlions';
     $teamBudget = 2500;
 
-    // Pesi base per ripartire IL RIMANENTE quando cambia l’insieme dei reparti aperti
-    $roleBasePerc = ['P'=>0.044, 'D'=>0.14, 'C'=>0.28, 'A'=>0.496];
+    // --- DEFINIZIONE SLOT (26) con percentuali base --------------------------
+    // NB: percentuali espresse in decimali (es. 2.8% => 0.028)
+    // Aggiunte anche le due voci Portiere 1 (4.7%) e Portiere 2 (0.1%).
+    // Se la somma non è esattamente 1.0, il motore rinormalizza sugli slot aperti.
+    $slots = [
+        // Portieri
+        ['index'=>0,  'role_token'=>'Por', 'title'=>'Portiere 1', 'level'=>'Top',  'hint'=>null, 'base_perc'=>0.047],
+        ['index'=>1,  'role_token'=>'Por', 'title'=>'Portiere 2', 'level'=>'Low',  'hint'=>null, 'base_perc'=>0.001],
 
-    // Pesi slot (come linee guida)
-    $slotBase = [
-        'P' => [1],
-        'D' => [100,70,60,50,30,25,3,1],
-        'C' => [250,150,120,80,50,40,5,2],
-        'A' => [500,350,200,150,5,1],
+        // Difensori centrali (DC)
+        ['index'=>2,  'role_token'=>'Dc',  'title'=>'Slot 1: DC – Top',   'level'=>'Top',  'hint'=>'Centrale di prima fascia, titolarità e voti alti', 'base_perc'=>0.028],
+        ['index'=>3,  'role_token'=>'Dc',  'title'=>'Slot 2: DC – Medio', 'level'=>'Medio','hint'=>'Secondo centrale affidabile di fascia media',     'base_perc'=>0.018],
+        ['index'=>4,  'role_token'=>'Dc',  'title'=>'Slot 3: DC – Low',   'level'=>'Low',  'hint'=>'Centrale low-cost ma titolare',                   'base_perc'=>0.001],
+        ['index'=>5,  'role_token'=>'Dc',  'title'=>'Slot 4: DC – Low',   'level'=>'Low',  'hint'=>'Quarto centrale low-cost',                        'base_perc'=>0.001],
+        ['index'=>6,  'role_token'=>'Dc',  'title'=>'Slot 5: DC – Low',   'level'=>'Low',  'hint'=>'Quinto centrale low-cost di riserva',             'base_perc'=>0.001],
+
+        // Terzini sinistri (DS)
+        ['index'=>7,  'role_token'=>'Ds',  'title'=>'Slot 6: DS – Medio', 'level'=>'Medio','hint'=>'Terzino sinistro titolare fascia media',           'base_perc'=>0.032],
+        ['index'=>8,  'role_token'=>'Ds',  'title'=>'Slot 7: DS – Low',   'level'=>'Low',  'hint'=>'Vice DS economico',                               'base_perc'=>0.001],
+
+        // Terzini destri (DD)
+        ['index'=>9,  'role_token'=>'Dd',  'title'=>'Slot 8: DD – Medio', 'level'=>'Medio','hint'=>'Terzino destro titolare fascia media',            'base_perc'=>0.036],
+        ['index'=>10, 'role_token'=>'Dd',  'title'=>'Slot 9: DD – Low',   'level'=>'Low',  'hint'=>'Vice DD economico',                               'base_perc'=>0.001],
+
+        // Esterni (E)
+        ['index'=>11, 'role_token'=>'E',   'title'=>'Slot 10: E – Medio', 'level'=>'Medio','hint'=>'Esterno titolare di buon livello',                 'base_perc'=>0.030],
+        ['index'=>12, 'role_token'=>'E',   'title'=>'Slot 11: E – Low',   'level'=>'Low',  'hint'=>'Secondo esterno economico',                        'base_perc'=>0.001],
+        ['index'=>13, 'role_token'=>'E',   'title'=>'Slot 12: E – Low (jolly)','level'=>'Low','hint'=>'Terzo esterno/jolly low-cost','base_perc'=>0.001],
+
+        // Mediani (M)
+        ['index'=>14, 'role_token'=>'M',   'title'=>'Slot 13: M – Medio', 'level'=>'Medio','hint'=>'Mediano titolare per 3-4-2-1',                     'base_perc'=>0.026],
+        ['index'=>15, 'role_token'=>'M',   'title'=>'Slot 14: M – Low',   'level'=>'Low',  'hint'=>'Mediano di scorta economico',                      'base_perc'=>0.001],
+
+        // Centrocampisti centrali (C)
+        ['index'=>16, 'role_token'=>'C',   'title'=>'Slot 15: C – Top',   'level'=>'Top',  'hint'=>'Mezzala/top con bonus',                            'base_perc'=>0.080],
+        ['index'=>17, 'role_token'=>'C',   'title'=>'Slot 16: C – Medio', 'level'=>'Medio','hint'=>'Altro C affidabile di fascia media',               'base_perc'=>0.036],
+        ['index'=>18, 'role_token'=>'C',   'title'=>'Slot 17: C – Low',   'level'=>'Low',  'hint'=>'C low-cost di rotazione',                          'base_perc'=>0.001],
+
+        // Trequartisti (T)
+        ['index'=>19, 'role_token'=>'T',   'title'=>'Slot 18: T – Top',   'level'=>'Top',  'hint'=>'Trequartista top, raro e da bonus',                'base_perc'=>0.128],
+        ['index'=>20, 'role_token'=>'T',   'title'=>'Slot 19: T – Low (multi)','level'=>'Low','hint'=>'T di riserva/multi-ruolo economico','base_perc'=>0.003],
+
+        // Ali (W)
+        ['index'=>21, 'role_token'=>'W',   'title'=>'Slot 20: W – Medio', 'level'=>'Medio','hint'=>'Ala titolare di fascia media',                     'base_perc'=>0.052],
+
+        // Attaccanti di raccordo (A)
+        ['index'=>22, 'role_token'=>'A',   'title'=>'Slot 21: A – Top',   'level'=>'Top',  'hint'=>'Seconda punta di prima fascia',                    'base_perc'=>0.171],
+        ['index'=>23, 'role_token'=>'A',   'title'=>'Slot 22: A – Medio', 'level'=>'Medio','hint'=>'Seconda punta di livello medio',                   'base_perc'=>0.076],
+
+        // Punte centrali (Pc)
+        ['index'=>24, 'role_token'=>'Pc',  'title'=>'Slot 23: PC – Top',  'level'=>'Top',  'hint'=>'Centravanti titolare, prima punta top',            'base_perc'=>0.224],
+        ['index'=>25, 'role_token'=>'Pc',  'title'=>'Slot 24: PC – Low/vice','level'=>'Low','hint'=>'Vice PC o giovane low-cost',                      'base_perc'=>0.001],
     ];
 
-    // STATO ATTUALE
+    // --- STATO ATTUALE -------------------------------------------------------
     $spentTotal     = \App\Models\FantaRosa::sum('costo');
     $remainingTotal = max(0, $teamBudget - $spentTotal);
 
-    $spentNowByRole = \App\Models\FantaRosa::selectRaw('classic_role, COALESCE(SUM(costo),0) as spent')
-        ->groupBy('classic_role')->pluck('spent','classic_role')->all();
-
-    $assignedRows = \App\Models\FantaRosa::whereNotNull('classic_role')
-        ->whereNotNull('slot_index')
-        ->get(['classic_role','slot_index','external_id','nome','squadra','costo','ruolo_esteso']);
-
-    $assignedMap = [];
+    // Già assegnati: mappo per slot_index
+    $assignedRows = \App\Models\FantaRosa::orderBy('slot_index')->get([
+        'slot_index','external_id','nome','squadra','costo','ruolo_esteso','classic_role'
+    ]);
+    $assignedByIndex = [];
     foreach ($assignedRows as $r) {
-        $assignedMap[$r->classic_role][$r->slot_index] = [
-            'nome'  => $r->nome,
-            'team'  => $r->squadra,
-            'roles' => $r->ruolo_esteso,
-            'costo' => $r->costo,
+        $assignedByIndex[(int)$r->slot_index] = [
+            'ext_id' => $r->external_id,
+            'nome'   => $r->nome,
+            'team'   => $r->squadra,
+            'roles'  => $r->ruolo_esteso,
+            'costo'  => (int)$r->costo,
+            // 'classic_role' contiene il role_token dello slot
         ];
     }
 
-    // Reparti attualmente APERTI (hanno almeno 1 slot libero)
-    $openRolesNow = [];
-    foreach (['P','D','C','A'] as $role) {
-        $free = 0;
-        foreach ($slotBase[$role] as $i => $_w) {
-            if (!isset($assignedMap[$role][$i])) $free++;
+    // --- RINORMALIZZAZIONE SUGLI SLOT APERTI --------------------------------
+    // Sommo le percentuali base SOLO sugli slot non ancora assegnati
+    $sumOpen = 0.0;
+    foreach ($slots as $s) {
+        if (!isset($assignedByIndex[$s['index']])) {
+            $sumOpen += (float)$s['base_perc'];
         }
-        if ($free > 0) $openRolesNow[] = $role;
     }
+    $sumOpen = $sumOpen > 0 ? $sumOpen : 1.0;
 
-    // Carico/creo stato (singleton: id=1)
-    $state = \App\Models\FantaBudgetState::query()->first(); // abbiamo inserito 1 riga in migration
-    if (!$state) {
-        $state = \App\Models\FantaBudgetState::create([
-            'anchor_remaining' => 0,
-            'caps'             => [],
-            'spent_at_anchor'  => [],
-            'open_roles'       => [],
-        ]);
+    // Calcolo suggerito per OGNI slot (aperto = percentuale_rinorm * Rimanente, chiuso = 0)
+    foreach ($slots as &$s) {
+        if (!isset($assignedByIndex[$s['index']])) {
+            $ratio = (float)$s['base_perc'] / $sumOpen;
+            $s['suggested'] = (int) round($remainingTotal * $ratio);
+        } else {
+            $s['suggested'] = 0;
+        }
     }
-
-    // Se l’insieme dei reparti aperti è cambiato → (ri)ancora e ricalcola caps sul RIMANENTE ATTUALE
-    $openChanged = (array_values($state->open_roles) !== array_values($openRolesNow));
-    if ($openChanged) {
-        $sumBase = 0.0;
-        foreach ($openRolesNow as $r) $sumBase += ($roleBasePerc[$r] ?? 0.0);
-
-        $newCaps = [];
-        if ($remainingTotal > 0 && $sumBase > 0) {
-            foreach ($openRolesNow as $r) {
-                $newCaps[$r] = (int) round($remainingTotal * ($roleBasePerc[$r] / $sumBase));
-            }
-        }
-        // reparti chiusi hanno cap = 0
-        foreach (['P','D','C','A'] as $r) {
-            if (!in_array($r, $openRolesNow, true)) $newCaps[$r] = 0;
-        }
-
-        $state->update([
-            'anchor_remaining' => $remainingTotal,
-            'caps'             => $newCaps,
-            'spent_at_anchor'  => [
-                'P' => (int)($spentNowByRole['P'] ?? 0),
-                'D' => (int)($spentNowByRole['D'] ?? 0),
-                'C' => (int)($spentNowByRole['C'] ?? 0),
-                'A' => (int)($spentNowByRole['A'] ?? 0),
-            ],
-            'open_roles'       => $openRolesNow,
-        ]);
-    }
-
-    // Usa i caps ancorati
-    $caps           = $state->caps ?: [];
-    $spentAtAnchor  = $state->spent_at_anchor ?: ['P'=>0,'D'=>0,'C'=>0,'A'=>0];
-
-    // Calcolo “da spendere” per reparto = cap - (speso_now - speso_all_anchor)
-    // (mai < 0)
-    $adviceByRole = [];
-    foreach (['P','D','C','A'] as $role) {
-        $cap          = (int)($caps[$role] ?? 0);
-        $spentNow     = (int)($spentNowByRole[$role] ?? 0);
-        $spentAnchor  = (int)($spentAtAnchor[$role] ?? 0);
-        $toSpendRole  = max(0, $cap - max(0, $spentNow - $spentAnchor));
-
-        // distribuisco toSpendRole SOLO tra slot liberi del ruolo
-        $weights     = $slotBase[$role];
-        $freeWeights = [];
-        foreach ($weights as $i => $w) {
-            if (!isset($assignedMap[$role][$i])) $freeWeights[] = $w;
-        }
-        $wSum = array_sum($freeWeights) ?: 1;
-
-        $slotSuggested = [];
-        foreach ($weights as $i => $w) {
-            if (isset($assignedMap[$role][$i])) {
-                $slotSuggested[$i] = 0;
-            } else {
-                $slotSuggested[$i] = (int) max(0, round($toSpendRole * ($w / $wSum)));
-            }
-        }
-
-        $adviceByRole[$role] = [
-            'suggested'      => $cap,          // target complessivo del reparto a partire dall’ancora
-            'spent'          => $spentNow,     // storico attuale (per badge)
-            'remaining'      => $toSpendRole,  // ancora spendibile nel reparto
-            'slot_suggested' => $slotSuggested,
-        ];
-    }
-
-    // Labels ruoli
-    $roles = [
-        'P' => ['label'=>'Portieri'],
-        'D' => ['label'=>'Difensori'],
-        'C' => ['label'=>'Centrocampisti'],
-        'A' => ['label'=>'Attaccanti'],
-    ];
-
-    // Linee guida slot (come prima)
-    $guidelines = [
-        'P' => [['title'=>'1 slot','hint'=>null]],
-        'D' => [
-            ['title'=>'Slot 1 (semi-top Dc/E/Ds)','hint'=>'Un difensore che può portare bonus e sia titolare in una big'],
-            ['title'=>'Slot 2 (Dc affidabile)','hint'=>'Centrale titolare in top 7, voto sicuro'],
-            ['title'=>'Slot 3 (Dc o Ds titolare)','hint'=>'Centrale o terzino di squadra medio-alta'],
-            ['title'=>'Slot 4 (E titolare medio)','hint'=>'Esterno a tutta fascia che gioca sempre'],
-            ['title'=>'Slot 5 (Dc titolare low cost)','hint'=>'Centrale da 6 fisso di squadra piccola'],
-            ['title'=>'Slot 6 (Dd/Ds titolare basso)','hint'=>'Terzino titolare che porta almeno il voto'],
-            ['title'=>'Slot 7 (titolare 100% low cost)','hint'=>'Dc/E di provinciale che gioca sempre'],
-            ['title'=>'Slot 8 (riempi slot minimo)','hint'=>'Riempi slot sempre presente nelle liste'],
-        ],
-        'C' => [
-            ['title'=>'Slot 1 (T top)','hint'=>'Trequartista di riferimento'],
-            ['title'=>'Slot 2 (C offensivo semi-top)','hint'=>'Mezzala che porta bonus'],
-            ['title'=>'Slot 3 (E/W listato C)','hint'=>'Esterno/ala alto ma listato centrocampista'],
-            ['title'=>'Slot 4 (C titolare buono)','hint'=>'Sempre titolare in top 7'],
-            ['title'=>'Slot 5 (M titolare solido)','hint'=>'Mediano utile per coprire il modulo'],
-            ['title'=>'Slot 6 (C/E titolare piccolo club)','hint'=>'Titolare in medio-bassa'],
-            ['title'=>'Slot 7 (titolare low cost)','hint'=>'Mediano/mezzala di provinciale'],
-            ['title'=>'Slot 8 (riempi slot 1-2 crediti)','hint'=>'Ultimi soldi, garantisca il voto'],
-        ],
-        'A' => [
-            ['title'=>'Slot 1 (bomber top Pc)','hint'=>'Uno tra Osimhen, Lautaro, Vlahović'],
-            ['title'=>'Slot 2 (semi-top A/Pc)','hint'=>'Seconda punta o prima di alto livello'],
-            ['title'=>'Slot 3 (titolarissimo medio Pc)','hint'=>'Titolare di squadra media 8–12 gol'],
-            ['title'=>'Slot 4 (seconda punta discreta)','hint'=>'Partner titolare in medio-bassa'],
-            ['title'=>'Slot 5 (titolare/scommessa low cost)','hint'=>'Gioca spesso, costo minimo'],
-            ['title'=>'Slot 6 (riempi slot a 1)','hint'=>'Vice del top o giovane'],
-        ],
-    ];
+    unset($s);
 
     $team = [
         'name'      => $teamName,
@@ -541,40 +474,29 @@ public function rosa()
         'remaining' => $remainingTotal,
     ];
 
-    return view('fantacalcio.rosa', compact(
-        'team','roles','guidelines','adviceByRole','assignedMap'
-    ));
+    // Passo tutto alla view
+    return view('fantacalcio.rosa', compact('team','slots','assignedByIndex'));
 }
-
-
-
 
 
 
 public function rosaPlayers(Request $request)
 {
-    $roleClassic = strtoupper($request->query('role', '')); // 'P' | 'D' | 'C' | 'A'
-    $q           = trim((string)$request->query('q', ''));
+    // Ora filtriamo per "role_token" esatto (Por, Dc, Ds, Dd, E, M, C, T, W, A, Pc)
+    $roleToken = trim((string)$request->query('role_token', ''));
+    $q         = trim((string)$request->query('q', ''));
 
-    // Classic -> Mantra (rispettando maiuscole iniziali e ruoli multipli in ruolo_esteso)
-    $classicToMantra = [
-        'P' => ['Por'],
-        'D' => ['Dc','Ds','Dd','E','B'],
-        'C' => ['M','C','W','T'],
-        'A' => ['A','Pc'],
-    ];
+    $validTokens = ['Por','Dc','Ds','Dd','E','M','C','T','W','A','Pc'];
+    if ($roleToken !== '' && !in_array($roleToken, $validTokens, true)) {
+        return response()->json([]); // token non valido -> nessun risultato
+    }
 
     $players = FantaListone::query()->where('stato', 0);
 
-    // filtro per ruolo: match esatto del token in ruolo_esteso (che può avere ";" multipli)
-    if ($roleClassic !== '' && isset($classicToMantra[$roleClassic])) {
-        $players->where(function($qq) use ($classicToMantra, $roleClassic) {
-            foreach ($classicToMantra[$roleClassic] as $mantraRole) {
-                $safe = preg_quote($mantraRole, '/');
-                $pattern = "(^|;\\s*){$safe}(\\s*;|$)";
-                $qq->orWhereRaw("ruolo_esteso REGEXP ?", [$pattern]);
-            }
-        });
+    if ($roleToken !== '') {
+        $safe = preg_quote($roleToken, '/');
+        $pattern = "(^|;\\s*){$safe}(\\s*;|$)";
+        $players->whereRaw("ruolo_esteso REGEXP ?", [$pattern]);
     }
 
     if ($q !== '') {
@@ -585,10 +507,9 @@ public function rosaPlayers(Request $request)
         ->orderBy('ruolo_esteso')
         ->orderBy('squadra')
         ->orderBy('nome')
-        ->limit(200) // safety
-        ->get(['external_id','ruolo','ruolo_esteso','nome','squadra','fvm']);
+        ->limit(200)
+        ->get(['external_id','ruolo_esteso','nome','squadra','fvm']);
 
-    // formato semplice per <select>
     $data = $players->map(function($p){
         return [
             'value' => $p->external_id,
@@ -600,18 +521,21 @@ public function rosaPlayers(Request $request)
 }
 
 
+
+
 public function rosaAdd(Request $request)
 {
+    // role_token delloslot, non più "classic P/D/C/A"
     $v = Validator::make($request->all(), [
         'external_id' => ['required','integer','exists:fanta_listone,external_id','unique:fanta_rosa,external_id'],
         'costo'       => ['required','integer','min:0'],
-        'role'        => ['required','in:P,D,C,A'],
+        'role_token'  => ['required','in:Por,Dc,Ds,Dd,E,M,C,T,W,A,Pc'],
         'slot_index'  => ['required','integer','min:0',
-            Rule::unique('fanta_rosa','slot_index')->where(fn($q)=>$q->where('classic_role',$request->role))
+            \Illuminate\Validation\Rule::unique('fanta_rosa','slot_index')
         ],
     ], [
         'external_id.unique' => 'Questo giocatore è già in rosa.',
-        'slot_index.unique'  => 'Questo slot è già occupato per il ruolo selezionato.',
+        'slot_index.unique'  => 'Questo slot è già occupato.',
     ]);
     if ($v->fails()) {
         return back()->withErrors($v)->with('error', 'Dati non validi.');
@@ -629,38 +553,29 @@ public function rosaAdd(Request $request)
                 ->where('stato', 0)
                 ->firstOrFail();
 
-    // coerenza ruolo Classic ↔ ruolo_esteso
-    $classicToMantra = [
-        'P' => ['Por'],
-        'D' => ['Dc','Ds','Dd','E','B'],
-        'C' => ['M','C','W','T'],
-        'A' => ['A','Pc'],
-    ];
-    $ok = false;
-    foreach ($classicToMantra[$request->role] as $m) {
-        $safe = preg_quote($m, '/');
-        if (preg_match("/(^|;\\s*){$safe}(\\s*;|$)/", $player->ruolo_esteso)) { $ok = true; break; }
-    }
-    if (!$ok) {
-        return back()->with('error', 'Il giocatore selezionato non è compatibile con il ruolo dello slot.');
+    // Verifica compatibilità: role_token deve essere presente come token in ruolo_esteso (con ;)
+    $safe = preg_quote($request->role_token, '/');
+    if (!preg_match("/(^|;\\s*){$safe}(\\s*;|$)/", $player->ruolo_esteso)) {
+        return back()->with('error', 'Il giocatore non è compatibile con il ruolo dello slot.');
     }
 
-    // 1) Inserisci in rosa con classic_role + slot_index
+    // Inserisco in rosa (riuso 'classic_role' per salvare il token dello slot)
     FantaRosa::create([
         'external_id'  => $player->external_id,
         'ruolo_esteso' => $player->ruolo_esteso,
         'nome'         => $player->nome,
         'squadra'      => $player->squadra,
         'costo'        => (int)$request->costo,
-        'classic_role' => $request->role,
-        'slot_index'   => (int)$request->slot_index,  // ✅
+        'classic_role' => $request->role_token, // <- salvo il token slot qui per evitare migrazioni
+        'slot_index'   => (int)$request->slot_index,
     ]);
 
-    // 2) Marca assegnato nel listone
+    // Marca assegnato nel listone
     $player->update(['stato' => 1]);
 
-    return back()->with('success', 'Giocatore aggiunto alla rosa. Budget e slot aggiornati.');
+    return back()->with('success', 'Giocatore aggiunto alla rosa.');
 }
+
 
 
 
