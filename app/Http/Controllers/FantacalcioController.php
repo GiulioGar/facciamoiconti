@@ -198,60 +198,61 @@ public function listoneData(Request $request)
         });
     }
 
-    // --- Espressioni SQL per mv24 effettivo e punteggio -----------------------
+    // --- Espressioni SQL sicure ----------------------------------------------
     // media mv24 per ruolo (subquery correlata)
     $avgSub = "(SELECT AVG(m2.mv24) FROM fanta_listone m2 WHERE m2.ruolo = fanta_listone.ruolo AND m2.mv24 IS NOT NULL)";
     // mv24_eff = mv24 se presente, altrimenti media per ruolo, altrimenti 1.0
     $mvEffExpr = "COALESCE(fanta_listone.mv24, {$avgSub}, 1.0)";
-    // score = (fvm * mv24_eff) + (like - dislike)
-    $scoreExpr = "(fanta_listone.fvm * {$mvEffExpr}) + (fanta_listone.`like` - fanta_listone.`dislike`)";
+
+    // 👇 CAST a signed per evitare 1690 (unsigned out-of-range nelle sottrazioni)
+    $likesSigned    = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
+    $dislikesSigned = "CAST(COALESCE(fanta_listone.`dislike`, 0) AS SIGNED)";
+
+    // score = (fvm * mv24_eff) + (like - dislike) con cast signed
+    $scoreExpr = "(fanta_listone.fvm * {$mvEffExpr}) + ({$likesSigned} - {$dislikesSigned})";
 
     // Conteggi
     $recordsTotal    = \App\Models\FantaListone::count();
     $recordsFiltered = (clone $query)->count();
 
-    // Ordinamento
- // Ordinamento (multi-colonna da DataTables)
-$order = $request->input('order', []);
+    // Ordinamento (multi-colonna da DataTables)
+    $order = $request->input('order', []);
 
-// Mappa index colonne DataTables -> colonne DB / espressioni
-$columns = [
-    0  => 'stato',
-    1  => 'external_id',
-    2  => 'ruolo',
-    3  => 'ruolo_esteso',
-    4  => 'nome',
-    5  => 'squadra',
-    6  => 'fvm',
-    7  => 'titolare',
-    8  => DB::raw($mvEffExpr),   // mv24 effettivo
-    9  => 'like',
-    10 => 'dislike',
-    11 => DB::raw($scoreExpr),   // punteggio
-];
+    // Mappa index colonne DataTables -> colonne DB / espressioni
+    $columns = [
+        0  => 'stato',
+        1  => 'external_id',
+        2  => 'ruolo',
+        3  => 'ruolo_esteso',
+        4  => 'nome',
+        5  => 'squadra',
+        6  => 'fvm',
+        7  => 'titolare',
+        8  => DB::raw($mvEffExpr),     // mv24 effettivo
+        9  => DB::raw($likesSigned),   // like casted
+        10 => DB::raw($dislikesSigned),// dislike casted
+        11 => DB::raw($scoreExpr),     // punteggio
+    ];
 
-if (!empty($order)) {
-    foreach ($order as $ord) {
-        $idx = (int)($ord['column'] ?? 0);
-        $dir = (($ord['dir'] ?? 'asc') === 'desc') ? 'desc' : 'asc';
-        $col = $columns[$idx] ?? 'ruolo';
+    if (!empty($order)) {
+        foreach ($order as $ord) {
+            $idx = (int)($ord['column'] ?? 0);
+            $dir = (($ord['dir'] ?? 'asc') === 'desc') ? 'desc' : 'asc';
+            $col = $columns[$idx] ?? 'ruolo';
 
-        if ($col instanceof \Illuminate\Database\Query\Expression) {
-            $query->orderByRaw($col->getValue().' '.$dir);
-        } else {
-            $query->orderBy($col, $dir);
+            if ($col instanceof \Illuminate\Database\Query\Expression) {
+                $query->orderByRaw($col->getValue().' '.$dir);
+            } else {
+                $query->orderBy($col, $dir);
+            }
         }
+    } else {
+        // Fallback se DataTables non manda 'order'
+        $query->orderByRaw($scoreExpr.' DESC')
+              ->orderByRaw($likesSigned.' DESC') // non usare 'like' nudo
+              ->orderBy('titolare', 'asc')
+              ->orderBy('nome', 'asc');
     }
-} else {
-    // Fallback se DataTables non manda 'order'
-    $query->orderByRaw($scoreExpr.' desc')
-          ->orderBy('like', 'desc')
-          ->orderBy('titolare', 'asc')
-          ->orderBy('nome', 'asc');
-}
-
-    // Se vuoi un ordinamento secondario stabile:
-    //$query->orderBy('ruolo')->orderBy('nome');
 
     // Paginazione + selezione colonne (includo raw per alias utili nel mapping)
     $rows = $query
@@ -267,8 +268,8 @@ if (!empty($order)) {
             'fvm',
             'titolare',
             'stato',
-            'like',
-            'dislike',
+            DB::raw('`like`   as likes'),
+            DB::raw('`dislike` as dislikes'),
             'mv24',
             DB::raw("{$mvEffExpr} as mv24_eff"),
             DB::raw("{$scoreExpr} as score_calc"),
@@ -278,24 +279,24 @@ if (!empty($order)) {
     // Output dati nell'ordine colonne del thead aggiornato
     $data = $rows->map(function ($r) {
         $mv24_display = $r->mv24 === null
-        ? 'N.D.'
-        : number_format((float)$r->mv24, 2, '.', '');
+            ? 'N.D.'
+            : number_format((float)$r->mv24, 2, '.', '');
 
-return [
-        (int) $r->stato,                    // 0 - Asta
-        $r->external_id,                    // 1 - ID
-        $r->ruolo,                          // 2 - Ruolo
-        $r->ruolo_esteso,                   // 3 - Mantra
-        $r->nome,                           // 4 - Nome
-        $r->squadra,                        // 5 - Squadra
-        (string) (int) round($r->fvm),      // 6 - FVM intero
-        $r->titolare === null ? null : (int)$r->titolare, // 7 - Titolare
-        $mv24_display,                      // 8 - 2024 **N.D. se null**
-        (int) $r->like,                     // 9 - Like
-        (int) $r->dislike,                  // 10 - Dislike
-        number_format((float)$r->score_calc, 2, '.', ''), // 11 - Punteggio (usa mv24_eff)
-        (int) $r->id,                       // 12 - ID DB per azioni
-    ];
+        return [
+            (int) $r->stato,                                   // 0 - Asta
+            $r->external_id,                                   // 1 - ID
+            $r->ruolo,                                         // 2 - Ruolo
+            $r->ruolo_esteso,                                  // 3 - Mantra
+            $r->nome,                                          // 4 - Nome
+            $r->squadra,                                       // 5 - Squadra
+            (string) (int) round($r->fvm),                     // 6 - FVM intero
+            $r->titolare === null ? null : (int)$r->titolare,  // 7 - Titolare
+            $mv24_display,                                     // 8 - 2024
+            (int) $r->likes,                                   // 9 - Like
+            (int) $r->dislikes,                                // 10 - Dislike
+            number_format((float)$r->score_calc, 2, '.', ''),  // 11 - Punteggio
+            (int) $r->id,                                      // 12 - ID DB per azioni
+        ];
     });
 
     return response()->json([
@@ -305,6 +306,7 @@ return [
         'data'            => $data,
     ]);
 }
+
 
 
 /**
@@ -577,6 +579,35 @@ public function rosaAdd(Request $request)
 }
 
 
+public function titolareUpdate(Request $request, $id)
+{
+    /** @var \App\Models\FantaListone $p */
+    $p = \App\Models\FantaListone::findOrFail($id);
+
+    // Permettiamo sia delta che set assoluto
+    $delta = $request->input('delta');   // es. +1 o -1
+    $value = $request->input('value');   // es. 72
+
+    if ($value !== null && $value !== '') {
+        $new = (int) $value;
+    } else {
+        $current = (int) ($p->titolare ?? 0);
+        $new = $current + (int) $delta;
+    }
+
+    // clamp 0..100
+    if ($new < 0)   $new = 0;
+    if ($new > 100) $new = 100;
+
+    $p->titolare = $new;
+    $p->save();
+
+    return response()->json([
+        'ok'      => true,
+        'value'   => (int) $p->titolare,
+        'message' => 'Aggiornato',
+    ]);
+}
 
 
 

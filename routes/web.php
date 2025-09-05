@@ -77,53 +77,54 @@ Route::middleware('auth')->group(function () {
     Route::get('/families/summary', [FamilyBudgetController::class, 'index'])
         ->name('families.summary');
 
-    /**
-     * ===========================
-     *        FANTACALCIO
-     * ===========================
-     *
-     * Nomi coerenti (fantacalcio.*), id vincolati numerici per le POST,
-     * tutto dietro auth.
-     */
-    Route::prefix('fantacalcio')->as('fantacalcio.')->group(function () {
+/**
+ * ===========================
+ *        FANTACALCIO
+ * ===========================
+ */
+Route::prefix('fantacalcio')->as('fantacalcio.')->group(function () {
 
-        // Dashboard Fantacalcio
-        Route::get('/', [FantacalcioController::class, 'index'])->name('index');
+    // Dashboard
+    Route::get('/', [FantacalcioController::class, 'index'])->name('index');
 
-        // Quote & import
-        Route::get('/quote', [FantacalcioController::class, 'quote'])->name('quote');
-        Route::post('/quote/import', [FantacalcioController::class, 'quoteImport'])->name('quote.import');
+    // Quote & import
+    Route::get('/quote', [FantacalcioController::class, 'quote'])->name('quote');
+    Route::post('/quote/import', [FantacalcioController::class, 'quoteImport'])->name('quote.import');
 
-        // Sync listone
-        Route::post('/listone/sync', [FantacalcioController::class, 'listoneSync'])->name('listone.sync');
+    // Sync listone
+    Route::post('/listone/sync', [FantacalcioController::class, 'listoneSync'])->name('listone.sync');
 
-        // DataTables (GET JSON)
-        Route::get('/listone/data', [FantacalcioController::class, 'listoneData'])->name('listone.data');
+    // DataTables (GET JSON)
+    Route::get('/listone/data', [FantacalcioController::class, 'listoneData'])->name('listone.data');
 
-        // Rosa
-        Route::get('/rosa', [FantacalcioController::class, 'rosa'])->name('rosa');
-        Route::get('/rosa/players', [FantacalcioController::class, 'rosaPlayers'])->name('rosa.players');
+    // ✅ Titolare (POST) — niente doppio "fantacalcio" nel path o nel name
+    Route::post('/listone/{id}/titolare', [FantacalcioController::class, 'titolareUpdate'])
+        ->whereNumber('id')
+        ->name('listone.titolare');
 
-        // Aggiungi / rimuovi dalla rosa
-        Route::post('/rosa/add',    [FantacalcioController::class, 'rosaAdd'])->name('rosa.add');
-        Route::post('/rosa/remove', [FantacalcioController::class, 'rosaRemove'])->name('rosa.remove');
+    // Rosa
+    Route::get('/rosa', [FantacalcioController::class, 'rosa'])->name('rosa');
+    Route::get('/rosa/players', [FantacalcioController::class, 'rosaPlayers'])->name('rosa.players');
+    Route::post('/rosa/add',    [FantacalcioController::class, 'rosaAdd'])->name('rosa.add');
+    Route::post('/rosa/remove', [FantacalcioController::class, 'rosaRemove'])->name('rosa.remove'); // assicurati che esista nel controller
 
-        // Azioni su calciatore (vincolo id numerico)
-        Route::post('/player/{id}/like',         [FantacalcioController::class, 'incrementLike'])
-            ->whereNumber('id')->name('player.like');
+    // Azioni su calciatore
+    Route::post('/player/{id}/like',         [FantacalcioController::class, 'incrementLike'])
+        ->whereNumber('id')->name('player.like');
 
-        Route::post('/player/{id}/dislike',      [FantacalcioController::class, 'incrementDislike'])
-            ->whereNumber('id')->name('player.dislike');
+    Route::post('/player/{id}/dislike',      [FantacalcioController::class, 'incrementDislike'])
+        ->whereNumber('id')->name('player.dislike');
 
-        Route::post('/player/{id}/toggle-stato', [FantacalcioController::class, 'toggleStato'])
-            ->whereNumber('id')->name('player.toggleStato');
+    Route::post('/player/{id}/toggle-stato', [FantacalcioController::class, 'toggleStato'])
+        ->whereNumber('id')->name('player.toggleStato');
 
-        Route::post('/player/{id}/like/dec',     [FantacalcioController::class, 'decrementLike'])
-            ->whereNumber('id')->name('player.like.dec');
+    Route::post('/player/{id}/like/dec',     [FantacalcioController::class, 'decrementLike'])
+        ->whereNumber('id')->name('player.like.dec');
 
-        Route::post('/player/{id}/dislike/dec',  [FantacalcioController::class, 'decrementDislike'])
-            ->whereNumber('id')->name('player.dislike.dec');
-    });
+    Route::post('/player/{id}/dislike/dec',  [FantacalcioController::class, 'decrementDislike'])
+        ->whereNumber('id')->name('player.dislike.dec');
+});
+
 });
 
 /**

@@ -71,6 +71,27 @@
   #role-classic, #role-mantra { padding-left: .5rem; padding-right: 1.6rem; }
 }
 
+ .titolare-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+  }
+  .titolare-pill {
+    display: inline-block;
+    min-width: 70px;
+    padding: .15rem .5rem;
+    text-align: center;
+    font-weight: 600;
+    border-radius: 999px;
+    color: #111;
+    border: 1px solid rgba(0,0,0,.05);
+  }
+  .titolare-btn {
+    line-height: 1;
+    padding: .1rem .35rem;
+    border: 1px solid rgba(0,0,0,.08);
+  }
+  .titolare-btn:focus { box-shadow: none; }
 
 </style>
 
@@ -187,20 +208,27 @@
   function debounce(fn, delay){ let t; return function(){ clearTimeout(t); t=setTimeout(()=>fn.apply(this, arguments), delay); }; }
 
   // URL azioni
-  const likeUrl      = id => "{{ url('/fantacalcio/player') }}/"+id+"/like";
-  const likeDecUrl   = id => "{{ url('/fantacalcio/player') }}/"+id+"/like/dec";
-  const dislikeUrl   = id => "{{ url('/fantacalcio/player') }}/"+id+"/dislike";
-  const dislikeDecUrl= id => "{{ url('/fantacalcio/player') }}/"+id+"/dislike/dec";
-  const toggleUrl    = id => "{{ url('/fantacalcio/player') }}/"+id+"/toggle-stato";
+  const likeUrl        = id => "{{ url('/fantacalcio/player') }}/"+id+"/like";
+  const likeDecUrl     = id => "{{ url('/fantacalcio/player') }}/"+id+"/like/dec";
+  const dislikeUrl     = id => "{{ url('/fantacalcio/player') }}/"+id+"/dislike";
+  const dislikeDecUrl  = id => "{{ url('/fantacalcio/player') }}/"+id+"/dislike/dec";
+  const toggleUrl      = id => "{{ url('/fantacalcio/player') }}/"+id+"/toggle-stato";
+  const titolareUrl    = id => "{{ url('/fantacalcio/listone') }}/"+id+"/titolare"; // 👈 NEW
   const csrf = '{{ csrf_token() }}';
 
-  function renderTitolare(val){
-    const v = Number(val);
-    if(!v)     return '<i class="bi bi-question-circle text-muted" title="N.D."></i>';
-    if(v===1)  return '<i class="bi bi-person-fill text-success"  title="Titolare"></i>';
-    if(v===2)  return '<i class="bi bi-shuffle text-warning"      title="Ballottaggio"></i>';
-    if(v===3)  return '<i class="bi bi-person-dash text-secondary" title="Riserva"></i>';
-    return '<i class="bi bi-question-circle text-muted" title="N.D."></i>';
+  // Gradiente per il valore titolare (0–100)
+  function gradientFor(p) {
+    p = Number(p||0);
+    if (p <= 33) {
+      // rosso scuro -> rosso chiaro
+      return 'linear-gradient(90deg, #7f1d1d 0%, #fecaca 100%)';
+    } else if (p <= 66) {
+      // giallo scuro -> giallo chiaro
+      return 'linear-gradient(90deg, #854d0e 0%, #fde68a 100%)';
+    } else {
+      // verde chiaro -> verde scuro
+      return 'linear-gradient(90deg, #bbf7d0 0%, #166534 100%)';
+    }
   }
 
   // Martello piccolo "clickable" al posto del bottone
@@ -210,7 +238,20 @@
     const cls = active ? 'text-success' : 'text-secondary opacity-75';
     const title = active ? 'All’asta (clic per rimuovere)' : 'Non all’asta (clic per mettere)';
     return `<i class="bi bi-hammer ${cls} icon-asta" data-id="${id}" title="${title}" role="button"></i>`;
+  }
 
+  // Renderer titolare con pill + ±
+  function renderTitolarePill(val, row){
+    const p  = (val == null) ? 0 : parseInt(val, 10);
+    const id = row[12];
+    const bg = gradientFor(p);
+    return `
+      <div class="titolare-cell d-inline-flex align-items-center gap-1" data-id="${id}" data-value="${p}">
+        <button type="button" class="btn btn-sm btn-light titolare-btn tit-dec" title="-1">−</button>
+        <span class="titolare-pill" style="background:${bg};">${p}%</span>
+        <button type="button" class="btn btn-sm btn-light titolare-btn tit-inc" title="+1">+</button>
+      </div>
+    `;
   }
 
   const table = $('#listone-table').DataTable({
@@ -220,12 +261,12 @@
     searching: false,
     lengthMenu: [10,25,50,100],
     pageLength: 25,
-   order: [
-  [11, 'desc'], // Punteggio DESC
-  [ 9, 'desc'], // Like DESC
-  [ 7, 'asc' ], // Titolare ASC
-  [ 4, 'asc' ]  // Nome ASC
-],
+    order: [
+      [11, 'desc'], // Punteggio DESC
+      [ 9, 'desc'], // Like DESC
+      [ 7, 'desc' ], // Titolare ASC
+      [ 4, 'asc' ]  // Nome ASC
+    ],
     ajax: {
       url: "{{ route('fantacalcio.listone.data') }}",
       data: function(d){
@@ -236,24 +277,24 @@
     },
     language: { url: "https://cdn.datatables.net/plug-ins/1.13.8/i18n/it-IT.json" },
     columns: [
-      // 0 Asta (icona martello piccola)
+      // 0 Asta (icona martello)
       { data: 0, className:'text-center', orderable:false, render:(d,type,row)=>renderAsta(d,row) },
 
       // 1..6  (ID, Ruolo, Mantra, Nome, Squadra, FVM intero)
-      { data: 1 },                     // ID
-      { data: 2 },                     // Ruolo
-      { data: 3 },                     // Mantra
-      { data: 4 },                     // Nome
-      { data: 5 },                     // Squadra
+      { data: 1 },                       // ID
+      { data: 2 },                       // Ruolo
+      { data: 3 },                       // Mantra
+      { data: 4 },                       // Nome
+      { data: 5 },                       // Squadra
       { data: 6, className:'text-end' }, // FVM (intero)
 
-      // 7 Titolare (icone)
-      { data: 7, className:'text-center', render: d => renderTitolare(d) },
+      // 7 Titolare (pill gradiente con ±)
+      { data: 7, className:'text-center', orderable:false, render: (d,type,row)=>renderTitolarePill(d,row) },
 
-      // 8 2024 (solo valore, niente icona)
+      // 8 2024
       { data: 8, className:'text-center' },
 
-      // 9 Like: click = +1, Alt/Shift = -1
+      // 9 Like
       { data: 9, className:'text-center', orderable:false, render: (d, type, row) => {
           const id = row[12];
           return `<span class="icon-like" data-id="${id}" title="Click = +1 • Alt/Shift = −1" role="button">
@@ -261,7 +302,7 @@
                   </span>`;
       }},
 
-      // 10 Dislike: click = +1, Alt/Shift = -1
+      // 10 Dislike
       { data:10, className:'text-center', orderable:false, render: (d, type, row) => {
           const id = row[12];
           return `<span class="icon-dislike" data-id="${id}" title="Click = +1 • Alt/Shift = −1" role="button">
@@ -269,116 +310,143 @@
                   </span>`;
       }},
 
-      // 11 Punteggio (solo numero, niente icona)
+      // 11 Punteggio
       { data:11, className:'text-center fw-semibold' },
     ],
 
-  responsive: {
-    // Clicca la riga per vedere i campi nascosti (ID, FVM) come “card”
-    details: {
-      type: 'inline',
-      target: 'tr',
-      renderer: function (api, rowIdx, columns) {
-        const rows = $.map(columns, function (col) {
-          return col.hidden
-            ? `<tr data-dt-row="${col.rowIndex}" data-dt-column="${col.columnIndex}">
-                 <td class="fw-semibold pe-2">${col.title}:</td>
-                 <td>${col.data}</td>
-               </tr>`
-            : '';
-        }).join('');
-        return rows ? $('<table class="table table-sm table-borderless m-0"><tbody>'+rows+'</tbody></table>') : false;
-      }
+    responsive: {
+      details: {
+        type: 'inline',
+        target: 'tr',
+        renderer: function (api, rowIdx, columns) {
+          const rows = $.map(columns, function (col) {
+            return col.hidden
+              ? `<tr data-dt-row="${col.rowIndex}" data-dt-column="${col.columnIndex}">
+                   <td class="fw-semibold pe-2">${col.title}:</td>
+                   <td>${col.data}</td>
+                 </tr>`
+              : '';
+          }).join('');
+          return rows ? $('<table class="table table-sm table-borderless m-0"><tbody>'+rows+'</tbody></table>') : false;
+        }
+      },
+      breakpoints: [
+        { name: 'desktop', width: Infinity },
+        { name: 'tablet',  width: 1024 },
+        { name: 'fablet',  width: 768 },
+        { name: 'phone',   width: 576 }
+      ]
     },
-    breakpoints: [
-      { name: 'desktop', width: Infinity },
-      { name: 'tablet',  width: 1024 },
-      { name: 'fablet',  width: 768 },
-      { name: 'phone',   width: 576 }
-    ]
-  },
 
-  // Diciamo a Responsive quali colonne sacrificare per prime
-  columnDefs: [
-    { responsivePriority: 1,  targets: [4,9,10,11] },    // Tieni visibili: Nome, Like, Dislike, Punteggio
-    { responsivePriority: 2,  targets: [0,2,5,7,8] },    // Poi: Asta, Ruolo, Squadra, Titolare, 2024
-    { responsivePriority: 100,targets: [1,6] }           // Nascondi presto su mobile: ID, FVM
-  ],
+    columnDefs: [
+      { responsivePriority: 1,  targets: [4,9,10,11] },    // visibilità prioritaria
+      { responsivePriority: 2,  targets: [0,2,5,7,8] },
+      { responsivePriority: 100,targets: [1,6] }           // nascondi presto su mobile: ID, FVM
+    ],
 
-  // Colora le righe assegnate (stato=1)
-  rowCallback: function(row, data){
-    if (Number(data[0]) === 1) $(row).addClass('dt-row-assigned');
-    else $(row).removeClass('dt-row-assigned');
-  },
-
-    //dom: 'rt<"d-flex flex-column flex-md-row justify-content-between align-items-center gap-2"lip>',
-
-      rowCallback: function(row, data) {
-    // data[0] = "stato" (0/1) come da tuo output server
-    if (Number(data[0]) === 1) {
-      $(row).addClass('dt-row-assigned');
-    } else {
-      $(row).removeClass('dt-row-assigned');
+    rowCallback: function(row, data){
+      // data[0] = "stato" (0/1)
+      if (Number(data[0]) === 1) $(row).addClass('dt-row-assigned');
+      else $(row).removeClass('dt-row-assigned');
     }
-  }
-
   });
 
   // Filtri → reload
   $('#searchName').on('keyup', debounce(()=>table.ajax.reload(null,false), 300));
   $('#role-classic, #role-mantra').on('change', ()=>table.ajax.reload(null,false));
 
-  // Azioni:
-  // Asta (toggle)
-  $('#listone-table').on('click', '.icon-asta', function(){
+  // --- Azioni: Asta (toggle)
+  $('#listone-table').on('click', '.icon-asta', function(e){
+    e.stopPropagation();
     $.post(toggleUrl($(this).data('id')), {_token: csrf}, ()=>table.ajax.reload(null,false));
   });
 
-  // Like: click = +1, Alt/Shift = -1
+  // --- Azioni: Like
   $('#listone-table').on('click', '.icon-like', function(e){
+    e.stopPropagation();
     const id = $(this).data('id');
     const url = (e.altKey || e.shiftKey) ? likeDecUrl(id) : likeUrl(id);
     $.post(url, {_token: csrf}, ()=>table.ajax.reload(null,false));
   });
 
-  // Dislike: click = +1, Alt/Shift = -1
+  // --- Azioni: Dislike
   $('#listone-table').on('click', '.icon-dislike', function(e){
+    e.stopPropagation();
     const id = $(this).data('id');
     const url = (e.altKey || e.shiftKey) ? dislikeDecUrl(id) : dislikeUrl(id);
     $.post(url, {_token: csrf}, ()=>table.ajax.reload(null,false));
   });
+
+  // --- Azioni: Titolare ±1
+  $('#listone-table').on('click', '.tit-inc, .tit-dec', function (e) {
+    e.stopPropagation();
+    const wrap = this.closest('.titolare-cell');
+    const id   = wrap.getAttribute('data-id');
+    const isInc = this.classList.contains('tit-inc');
+    const delta = isInc ? 1 : -1;
+
+    fetch(titolareUrl(id), {
+      method: 'POST',
+      headers: {
+        'X-CSRF-TOKEN': csrf,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ delta })
+    })
+    .then(r => r.json())
+    .then(json => { if (json.ok) table.ajax.reload(null, false); });
+  });
+
+  // --- Azione: doppio click sul pill per set diretto
+  $('#listone-table').on('dblclick', '.titolare-pill', function (e) {
+    e.stopPropagation();
+    const wrap = this.closest('.titolare-cell');
+    const id   = wrap.getAttribute('data-id');
+    const cur  = parseInt(wrap.getAttribute('data-value') || '0', 10);
+    const val  = prompt('Imposta titolarità (0–100):', cur);
+    if (val === null) return;
+    const vNum = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
+
+    fetch(titolareUrl(id), {
+      method: 'POST',
+      headers: {
+        'X-CSRF-TOKEN': csrf,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ value: vNum })
+    })
+    .then(r => r.json())
+    .then(json => { if (json.ok) table.ajax.reload(null, false); });
+  });
+
 })();
-
-
-// Asta (toggle)
-$('#listone-table').on('click', '.icon-asta', function(e){
-  e.stopPropagation();
-  $.post(toggleUrl($(this).data('id')), {_token: csrf}, ()=>table.ajax.reload(null,false));
-});
-
-// Like
-$('#listone-table').on('click', '.icon-like', function(e){
-  e.stopPropagation();
-  const id = $(this).data('id');
-  const url = (e.altKey || e.shiftKey) ? likeDecUrl(id) : likeUrl(id);
-  $.post(url, {_token: csrf}, ()=>table.ajax.reload(null,false));
-});
-
-// Dislike
-$('#listone-table').on('click', '.icon-dislike', function(e){
-  e.stopPropagation();
-  const id = $(this).data('id');
-  const url = (e.altKey || e.shiftKey) ? dislikeDecUrl(id) : dislikeUrl(id);
-  $.post(url, {_token: csrf}, ()=>table.ajax.reload(null,false));
-});
-
-
 </script>
 
 <style>
   /* UX: rendiamo chiaramente cliccabili le icone */
   .icon-asta, .icon-like, .icon-dislike { cursor: pointer; user-select: none; }
+
+  /* Pill e micro-bottoni titolare */
+  .titolare-pill {
+    display: inline-block;
+    min-width: 70px;
+    padding: .15rem .5rem;
+    text-align: center;
+    font-weight: 600;
+    border-radius: 999px;
+    color: #111;
+    border: 1px solid rgba(0,0,0,.05);
+  }
+  .titolare-btn {
+    line-height: 1;
+    padding: .1rem .35rem;
+    border: 1px solid rgba(0,0,0,.08);
+  }
+  .titolare-btn:focus { box-shadow: none; }
 </style>
 @endpush
+
 
 
