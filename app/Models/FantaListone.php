@@ -23,5 +23,13 @@ protected $fillable = [
     'dislike',
     'titolare',
     'mv24',
+    'level',
+    'recommended_credits',
 ];
+
+    protected $casts = [
+        'level' => 'integer',
+        'recommended_credits' => 'integer',
+    ];
+
 }

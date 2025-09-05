@@ -209,7 +209,7 @@ public function listoneData(Request $request)
     $dislikesSigned = "CAST(COALESCE(fanta_listone.`dislike`, 0) AS SIGNED)";
 
     // score = (fvm * mv24_eff) + (like - dislike) con cast signed
-    $scoreExpr = "(fanta_listone.fvm * {$mvEffExpr}) + ({$likesSigned} - {$dislikesSigned})";
+    $scoreExpr = "(fanta_listone.fvm * {$mvEffExpr}) + (({$likesSigned} * 5) - {$dislikesSigned} *5)";
 
     // Conteggi
     $recordsTotal    = \App\Models\FantaListone::count();
@@ -232,6 +232,8 @@ public function listoneData(Request $request)
         9  => DB::raw($likesSigned),   // like casted
         10 => DB::raw($dislikesSigned),// dislike casted
         11 => DB::raw($scoreExpr),     // punteggio
+            12 => 'level',
+    13 => 'recommended_credits',
     ];
 
     if (!empty($order)) {
@@ -273,6 +275,8 @@ public function listoneData(Request $request)
             'mv24',
             DB::raw("{$mvEffExpr} as mv24_eff"),
             DB::raw("{$scoreExpr} as score_calc"),
+              'level',
+            'recommended_credits',
         ])
         ->get();
 
@@ -295,7 +299,9 @@ public function listoneData(Request $request)
             (int) $r->likes,                                   // 9 - Like
             (int) $r->dislikes,                                // 10 - Dislike
             number_format((float)$r->score_calc, 2, '.', ''),  // 11 - Punteggio
-            (int) $r->id,                                      // 12 - ID DB per azioni
+    (int) ($r->level ?? 3),                            // 12 - Level (default 3)
+    $r->recommended_credits ?? '—',                    // 13 - Crediti consigliati
+            (int) $r->id,                                      // 14 - ID DB per azioni
         ];
     });
 
@@ -484,16 +490,24 @@ public function rosa()
 
 public function rosaPlayers(Request $request)
 {
-    // Ora filtriamo per "role_token" esatto (Por, Dc, Ds, Dd, E, M, C, T, W, A, Pc)
     $roleToken = trim((string)$request->query('role_token', ''));
     $q         = trim((string)$request->query('q', ''));
 
     $validTokens = ['Por','Dc','Ds','Dd','E','M','C','T','W','A','Pc'];
     if ($roleToken !== '' && !in_array($roleToken, $validTokens, true)) {
-        return response()->json([]); // token non valido -> nessun risultato
+        return response()->json([]);
     }
 
-    $players = FantaListone::query()->where('stato', 0);
+    // === Espressione punteggio ===
+    $avgSub         = "(SELECT AVG(m2.mv24) FROM fanta_listone m2 WHERE m2.ruolo = fanta_listone.ruolo AND m2.mv24 IS NOT NULL)";
+    $mvEffExpr      = "COALESCE(fanta_listone.mv24, {$avgSub}, 1.0)";
+    $likesSigned    = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
+    $dislikesSigned = "CAST(COALESCE(fanta_listone.`dislike`, 0) AS SIGNED)";
+    // 👇 adesso like*5 e dislike*5
+    $scoreExpr      = "(fanta_listone.fvm * {$mvEffExpr}) + (({$likesSigned} * 5) - ({$dislikesSigned} * 5))";
+
+    $players = FantaListone::query()
+        ->where('stato', 0);
 
     if ($roleToken !== '') {
         $safe = preg_quote($roleToken, '/');
@@ -505,22 +519,32 @@ public function rosaPlayers(Request $request)
         $players->where('nome', 'like', "%{$q}%");
     }
 
+    // 🔽 seleziono il punteggio e ordino solo per score_calc
     $players = $players
-        ->orderBy('ruolo_esteso')
-        ->orderBy('squadra')
-        ->orderBy('nome')
+        ->select([
+            'external_id',
+            'ruolo_esteso',
+            'nome',
+            'squadra',
+            'fvm',
+            DB::raw("{$scoreExpr} as score_calc"),
+        ])
+        ->orderByDesc('score_calc')
         ->limit(200)
-        ->get(['external_id','ruolo_esteso','nome','squadra','fvm']);
+        ->get();
 
     $data = $players->map(function($p){
         return [
             'value' => $p->external_id,
-            'text'  => "{$p->nome} ({$p->squadra}) — {$p->ruolo_esteso} — FVM {$p->fvm}",
+            //'text'  => "{$p->nome} ({$p->squadra}) — {$p->ruolo_esteso} — FVM {$p->fvm}",
+            // se vuoi mostrare il punteggio nella tendina:
+             'text' => "{$p->nome} ({$p->squadra}) — {$p->ruolo_esteso} — Score ".number_format($p->score_calc,1),
         ];
     });
 
     return response()->json($data);
 }
+
 
 
 
@@ -610,6 +634,172 @@ public function titolareUpdate(Request $request, $id)
 }
 
 
+public function updateLevel(Request $request, $id)
+{
+    $v = Validator::make($request->all(), [
+        'level' => ['required','integer','min:1','max:5'],
+    ]);
+    if ($v->fails()) {
+        return response()->json(['ok'=>false,'message'=>'Level non valido (1..5)'], 422);
+    }
+
+    /** @var FantaListone $p */
+    $p = FantaListone::findOrFail((int)$id);
+    $lvl = (int)$request->level;
+
+    // budget per reparto in base al ruolo classic del giocatore
+    $roleBudget = ['P'=>120, 'D'=>300, 'C'=>900, 'A'=>1180];
+    $levelPerc  = [5=>0.50, 4=>0.15, 3=>0.05, 2=>0.01, 1=>0.00];
+
+    $budget = $roleBudget[$p->ruolo] ?? 0;
+    if ($lvl === 1) {
+        $credits = 1;
+    } else {
+        $credits = ($budget > 0) ? (int)floor($budget * ($levelPerc[$lvl] ?? 0.0)) : 0;
+        $credits = max(1, $credits);
+    }
+    $credits = min(2500, $credits);
+
+    $p->level = $lvl;
+    $p->recommended_credits = $credits;
+    $p->save();
+
+    return response()->json(['ok'=>true,'level'=>$p->level,'recommended_credits'=>$p->recommended_credits]);
+}
+
+
+// == CALCOLO AUTOMATICO LIVELLI ==
+public function updateLevels(Request $request)
+{
+    // 👉 allinea la formula a quella che usi altrove (like*5 − dislike*5)
+    $avgSub         = "(SELECT AVG(m2.mv24) FROM fanta_listone m2 WHERE m2.ruolo = fanta_listone.ruolo AND m2.mv24 IS NOT NULL)";
+    $mvEffExpr      = "COALESCE(fanta_listone.mv24, {$avgSub}, 1.0)";
+    $likesSigned    = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
+    $dislikesSigned = "CAST(COALESCE(fanta_listone.`dislike`, 0) AS SIGNED)";
+    $scoreExpr      = "(fanta_listone.fvm * {$mvEffExpr}) + (({$likesSigned} * 5) - ({$dislikesSigned} * 5))";
+
+    // Budget per reparto (Classic role)
+    $roleBudget = ['P'=>120, 'D'=>300, 'C'=>900, 'A'=>1180];
+    // Percentuali per level
+    $levelPerc = [5=>0.50, 4=>0.15, 3=>0.05, 2=>0.01, 1=>0.00];
+
+    // prendo id, ruolo classic e score
+    $rows = FantaListone::query()
+        ->select(['id','ruolo', DB::raw("{$scoreExpr} as score_calc")])
+        ->get();
+
+    if ($rows->isEmpty()) {
+        return back()->with('error', 'Nessun dato per il calcolo livelli.');
+    }
+
+    $byRole = $rows->groupBy('ruolo');
+
+    $levelCase  = "CASE id ";
+    $creditCase = "CASE id ";
+    $ids        = [];
+
+    foreach ($byRole as $role => $items) {
+        $sorted = $items->sortByDesc('score_calc')->values();
+
+        // TOP 5 per ruolo -> level 5
+        foreach ($sorted->take(5) as $r) {
+            $lvl = 5;
+            $ids[]      = (int)$r->id;
+            $levelCase .= "WHEN {$r->id} THEN {$lvl} ";
+            $budget     = $roleBudget[$role] ?? 0;
+            $credits    = ($budget > 0) ? (int)floor($budget * $levelPerc[$lvl]) : 0;
+            $credits    = max(1, min(2500, $credits));
+            $creditCase .= "WHEN {$r->id} THEN {$credits} ";
+        }
+
+        // Restanti -> fasce 1..4
+        $rest = $sorted->slice(5)->values();
+        if ($rest->isEmpty()) continue;
+
+        $scores = $rest->pluck('score_calc')->map(fn($v)=>(float)$v);
+        $mean   = $scores->avg();
+        $std    = self::stddev($scores);
+        // soglie (tarabili)
+        $t1 = $mean + 0.75*$std; // -> 4
+        $t2 = $mean - 0.25*$std; // -> 3
+        $t3 = $mean - 1.25*$std; // -> 2
+
+        foreach ($rest as $r) {
+            $s = (float)$r->score_calc;
+            $lvl = 3;
+            if ($std > 0) {
+                if     ($s >= $t1) $lvl = 4;
+                elseif ($s >= $t2) $lvl = 3;
+                elseif ($s >= $t3) $lvl = 2;
+                else               $lvl = 1;
+            }
+
+            $ids[]      = (int)$r->id;
+            $levelCase .= "WHEN {$r->id} THEN {$lvl} ";
+
+            $budget = $roleBudget[$role] ?? 0;
+            if ($lvl === 1) {
+                $credits = 1; // regola speciale
+            } else {
+                $credits = ($budget > 0) ? (int)floor($budget * ($levelPerc[$lvl] ?? 0.0)) : 0;
+                $credits = max(1, $credits);
+            }
+            $credits    = min(2500, $credits);
+            $creditCase .= "WHEN {$r->id} THEN {$credits} ";
+        }
+    }
+
+    if (empty($ids)) return back()->with('success','Nessun aggiornamento necessario.');
+
+    $levelCase  .= "END";
+    $creditCase .= "END";
+
+    DB::beginTransaction();
+    try {
+        FantaListone::whereIn('id', array_unique($ids))->update([
+            'level'               => DB::raw($levelCase),
+            'recommended_credits' => DB::raw($creditCase),
+            'updated_at'          => now(),
+        ]);
+        DB::commit();
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return back()->with('error', 'Errore aggiornando livelli/crediti: '.$e->getMessage());
+    }
+
+    return back()->with('success', 'Livelli e crediti ricalcolati con successo.');
+}
+
+
+public function updateCredits(Request $request, $id)
+{
+    $v = Validator::make($request->all(), [
+        'recommended_credits' => ['nullable','integer','min:1','max:2500'],
+    ]);
+    if ($v->fails()) {
+        return response()->json(['ok'=>false, 'message'=>'Valore crediti non valido (1..2500 o vuoto).'], 422);
+    }
+
+    $p = \App\Models\FantaListone::findOrFail((int)$id);
+    $val = $request->input('recommended_credits');
+    $p->recommended_credits = ($val === null || $val === '') ? null : (int)$val;
+    $p->save();
+
+    return response()->json(['ok'=>true, 'recommended_credits'=>$p->recommended_credits]);
+}
+
+/**
+ * Deviazione standard campionaria (n-1) su una Collection numerica.
+ */
+private static function stddev(\Illuminate\Support\Collection $values): float
+{
+    $n = $values->count();
+    if ($n <= 1) return 0.0;
+    $mean = $values->avg();
+    $acc  = 0.0;
+    foreach ($values as $v) { $d = ((float)$v) - $mean; $acc += $d * $d; }
+    return sqrt($acc / ($n - 1));
+}
 
 
 }

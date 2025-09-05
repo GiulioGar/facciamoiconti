@@ -93,6 +93,8 @@
   }
   .titolare-btn:focus { box-shadow: none; }
 
+  .badge.bg-success, .badge.bg-primary, .badge.bg-info { font-weight: 600; }
+
 </style>
 
 @endpush
@@ -117,18 +119,28 @@
   @endif
 
   <div class="card">
-    <div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-      <span class="d-flex align-items-center">
-        <i class="bi bi-table me-2"></i> Listone giocatori
-      </span>
 
-      <form action="{{ route('fantacalcio.listone.sync') }}" method="POST" class="m-0">
-        @csrf
-        <button type="submit" class="btn btn-outline-primary btn-sm">
-          <i class="bi bi-arrow-repeat me-1"></i> Aggiorna Lista
-        </button>
-      </form>
-    </div>
+<div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+  <span class="d-flex align-items-center">
+    <i class="bi bi-table me-2"></i> Listone giocatori
+  </span>
+
+  <div class="d-flex align-items-center ms-auto">
+  <form action="{{ route('fantacalcio.listone.sync') }}" method="POST" class="m-0">
+    @csrf
+    <button type="submit" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-arrow-repeat me-1"></i> Aggiorna Lista
+    </button>
+  </form>
+  <form action="{{ route('fantacalcio.listone.updateLevels') }}" method="POST" class="m-0 ms-2">
+    @csrf
+    <button type="submit" class="btn btn-outline-secondary btn-sm">
+      <i class="bi bi-graph-up-arrow me-1"></i> Aggiorna livelli
+    </button>
+  </form>
+  </div>
+</div>
+
 
     <div class="card-body">
       {{-- FILTRI --}}
@@ -187,6 +199,8 @@
     <th class="text-center">👍</th>         <!-- like -->
     <th class="text-center">👎</th>         <!-- dislike -->
     <th class="text-center">Punteggio</th>  <!-- (FVM*mv24)+(like-dislike) -->
+    <th class="text-center">Categoria</th>
+<th class="text-end">Crediti</th>
   </tr>
 </thead>
 
@@ -233,7 +247,7 @@
 
   // Martello piccolo "clickable" al posto del bottone
   function renderAsta(stato, row){
-    const id = row[12];
+    const id = row[ROW_ID_IDX];
     const active = Number(stato)===1;
     const cls = active ? 'text-success' : 'text-secondary opacity-75';
     const title = active ? 'All’asta (clic per rimuovere)' : 'Non all’asta (clic per mettere)';
@@ -243,7 +257,7 @@
   // Renderer titolare con pill + ±
   function renderTitolarePill(val, row){
     const p  = (val == null) ? 0 : parseInt(val, 10);
-    const id = row[12];
+    const id = row[ROW_ID_IDX];
     const bg = gradientFor(p);
     return `
       <div class="titolare-cell d-inline-flex align-items-center gap-1" data-id="${id}" data-value="${p}">
@@ -253,6 +267,8 @@
       </div>
     `;
   }
+
+const ROW_ID_IDX = 14; // indice dell'ID DB tecnico nel dataset (dopo l'aggiunta delle 2 nuove colonne)
 
   const table = $('#listone-table').DataTable({
     processing: true,
@@ -296,7 +312,7 @@
 
       // 9 Like
       { data: 9, className:'text-center', orderable:false, render: (d, type, row) => {
-          const id = row[12];
+          const id = row[ROW_ID_IDX];
           return `<span class="icon-like" data-id="${id}" title="Click = +1 • Alt/Shift = −1" role="button">
                     <i class="bi bi-hand-thumbs-up me-1"></i><strong>${d}</strong>
                   </span>`;
@@ -304,7 +320,7 @@
 
       // 10 Dislike
       { data:10, className:'text-center', orderable:false, render: (d, type, row) => {
-          const id = row[12];
+          const id = row[ROW_ID_IDX];
           return `<span class="icon-dislike" data-id="${id}" title="Click = +1 • Alt/Shift = −1" role="button">
                     <i class="bi bi-hand-thumbs-down me-1"></i><strong>${d}</strong>
                   </span>`;
@@ -312,7 +328,31 @@
 
       // 11 Punteggio
       { data:11, className:'text-center fw-semibold' },
+
+          // 12 Level (badge)
+{ data: 12, className:'text-center', orderable:true, searchable:true,
+  render: (d, type, row) => {
+    const lvl   = parseInt(d ?? 3, 10);
+    const id    = row[ROW_ID_IDX]; // assicurati che ROW_ID_IDX=14
+    const label = {1:'Scarso',2:'Basso',3:'Medio',4:'Ottimo',5:'TOP'}[lvl] || 'Medio';
+    const cls   = {1:'secondary',2:'secondary',3:'info',4:'primary',5:'success'}[lvl] || 'info';
+    return `<span class="badge bg-${cls} cell-level-edit" data-id="${id}" data-level="${lvl}" title="Clic per modificare">${lvl} - ${label}</span>`;
+  }
+},
+
+
+
+// 13 Crediti consigliati (clic per edit)
+{ data: 13, className:'text-end', render: (d, type, row) => {
+    const id = row[ROW_ID_IDX];
+    const val = (d === null || d === '—') ? '' : parseInt(d,10);
+    const display = (val === '' ? '—' : val);
+    return `<span class="cell-credits-edit" data-id="${id}" data-value="${val}" title="Clic per modificare crediti">${display}</span>`;
+}},
+
     ],
+
+
 
     responsive: {
       details: {
@@ -339,9 +379,10 @@
     },
 
     columnDefs: [
-      { responsivePriority: 1,  targets: [4,9,10,11] },    // visibilità prioritaria
-      { responsivePriority: 2,  targets: [0,2,5,7,8] },
-      { responsivePriority: 100,targets: [1,6] }           // nascondi presto su mobile: ID, FVM
+  { responsivePriority: 1,   targets: [4,9,10,11] },   // Nome, Like/Dislike, Punteggio
+  { responsivePriority: 2,   targets: [0,2,5,7,13] },   // Asta, Ruolo, Squadra, Titolare, 2024
+  { responsivePriority: 50,  targets: [12,8] },       // 👈 Level + Crediti consigliati
+  { responsivePriority: 100, targets: [1,6] }          // ID, FVM (nascondi presto)
     ],
 
     rowCallback: function(row, data){
@@ -420,6 +461,73 @@
     .then(r => r.json())
     .then(json => { if (json.ok) table.ajax.reload(null, false); });
   });
+
+  // --- Editing inline del livello
+$('#listone-table').on('click', '.cell-level-edit', function (e) {
+  e.stopPropagation();
+  const id  = this.getAttribute('data-id');
+  const cur = parseInt(this.getAttribute('data-level') || '3', 10);
+  const val = prompt('Imposta Level (1=Scarso .. 5=TOP):', cur);
+  if (val === null) return;
+
+  const lvl = Math.max(1, Math.min(5, parseInt(val, 10) || cur));
+
+  fetch("{{ route('fantacalcio.listone.updateLevel', ['id'=>'__ID__']) }}".replace('__ID__', id), {
+    method: 'POST',
+    headers: {
+      'X-CSRF-TOKEN': '{{ csrf_token() }}',
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ level: lvl })
+  })
+  .then(r => r.json())
+  .then(json => {
+    if (json.ok) {
+      $('#listone-table').DataTable().ajax.reload(null, false);
+    } else {
+      alert(json.message || 'Errore durante il salvataggio del livello.');
+    }
+  });
+});
+
+
+// --- Editing inline dei crediti consigliati
+$('#listone-table').on('click', '.cell-credits-edit', function (e) {
+  e.stopPropagation();
+  const id  = this.getAttribute('data-id');
+  const cur = this.getAttribute('data-value');
+  const val = prompt('Imposta crediti consigliati (1..2500) — lascia vuoto per nessun valore:', cur || '');
+  if (val === null) return;
+
+  // Consenti vuoto (=> null) oppure intero 1..2500
+  let payload;
+  if (val.trim() === '') {
+    payload = { recommended_credits: null };
+  } else {
+    const n = parseInt(val, 10);
+    if (isNaN(n) || n < 1 || n > 2500) {
+      alert('Valore non valido. Inserisci un intero tra 1 e 2500, oppure lascia vuoto.');
+      return;
+    }
+    payload = { recommended_credits: n };
+  }
+
+  fetch("{{ route('fantacalcio.listone.updateCredits', ['id'=>'__ID__']) }}".replace('__ID__', id), {
+    method: 'POST',
+    headers: {
+      'X-CSRF-TOKEN': '{{ csrf_token() }}',
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  })
+  .then(r => r.json())
+  .then(json => {
+    if (json.ok) $('#listone-table').DataTable().ajax.reload(null, false);
+    else alert(json.message || 'Errore durante il salvataggio dei crediti.');
+  });
+});
 
 })();
 </script>

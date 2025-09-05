@@ -123,6 +123,19 @@ Route::prefix('fantacalcio')->as('fantacalcio.')->group(function () {
 
     Route::post('/player/{id}/dislike/dec',  [FantacalcioController::class, 'decrementDislike'])
         ->whereNumber('id')->name('player.dislike.dec');
+
+// Ricalcolo massivo dei livelli + crediti
+Route::post('/listone/update-levels', [FantacalcioController::class, 'updateLevels'])
+    ->name('listone.updateLevels');
+
+// Update di un singolo livello (ricalcola anche i crediti)
+Route::post('/listone/{id}/level', [FantacalcioController::class, 'updateLevel'])
+    ->whereNumber('id')->name('listone.updateLevel');
+    
+
+    Route::post('/listone/{id}/credits', [\App\Http\Controllers\FantacalcioController::class, 'updateCredits'])
+    ->name('listone.updateCredits');
+
 });
 
 });
