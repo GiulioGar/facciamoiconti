@@ -103,7 +103,23 @@ class FamilyController extends Controller
      */
 public function combinedBalances(Family $family)
 {
-    $user = auth()->user();
+$user = auth()->user();
+
+// Anno selezionato (default: anno corrente)
+$year = (int) request('year', now()->year);
+
+// Limite inferiore: 2025
+$minYear = 2025;
+$currentYear = now()->year;
+
+if ($year < $minYear) {
+    $year = $minYear;
+}
+
+if ($year > $currentYear) {
+    $year = $currentYear;
+}
+
 
     // Autorizzazione: solo owner o membro
     if ($family->owner_id !== $user->id
@@ -113,7 +129,7 @@ public function combinedBalances(Family $family)
     }
 
     // ID delle categorie da includere
-    $commonIds = [2,3,4,17,24,7,8,9,10,11,12,13,16,18,19,20,21];
+    $commonIds = [2,3,4,17,24,7,8,9,10,11,12,13,16,18,19,20,21,25];
 
     // Solo budget ID 2 (Familiare) o 3 (Extra)
     $budgetIds = [2, 3];
@@ -131,7 +147,7 @@ public function combinedBalances(Family $family)
         foreach ($users as $member) {
             $row['values'][$member->id] = $member->expenses()
                 ->where('expense_category_id', $category->id)
-                ->whereYear('date', now()->year)
+                ->whereYear('date', $year)
                 ->whereIn('budget_category_id', $budgetIds) // ← Aggiunto filtro budget
                 ->sum('amount');
         }
@@ -143,14 +159,15 @@ public function combinedBalances(Family $family)
         ->expenses()
         ->whereIn('expense_category_id', $commonIds)
         ->whereIn('budget_category_id', $budgetIds)
-        ->whereYear('date', now()->year)
+        ->whereYear('date', $year)
         ->sum('amount');
 
-    $memberTotals = $family->members->mapWithKeys(function($member) use ($commonIds, $budgetIds) {
+    $memberTotals = $family->members->mapWithKeys(function($member) use ($commonIds, $budgetIds, $year) {
+
         $sum = $member->expenses()
             ->whereIn('expense_category_id', $commonIds)
             ->whereIn('budget_category_id', $budgetIds)
-            ->whereYear('date', now()->year)
+            ->whereYear('date', $year)
             ->sum('amount');
         return [$member->id => $sum];
     });
@@ -188,7 +205,7 @@ for ($month = 1; $month <= 12; $month++) {
         ->expenses()
         ->whereIn('expense_category_id', $commonIds)
         ->whereIn('budget_category_id', $budgetIds)
-        ->whereYear('date', now()->year)
+        ->whereYear('date', $year)
         ->whereMonth('date', $month)
         ->sum('amount');
 
@@ -196,7 +213,7 @@ for ($month = 1; $month <= 12; $month++) {
         ? $firstMember->expenses()
             ->whereIn('expense_category_id', $commonIds)
             ->whereIn('budget_category_id', $budgetIds)
-            ->whereYear('date', now()->year)
+            ->whereYear('date', $year)
             ->whereMonth('date', $month)
             ->sum('amount')
         : 0;
@@ -208,20 +225,24 @@ for ($month = 1; $month <= 12; $month++) {
     ]);
 }
 
-    return view('families.combined-balances', compact(
-        'family',
-        'categories',
-        'data',
-        'users',
-        'ownerSum',
-        'memberTotals',
-        'allTimeOwnerSum',
-        'allTimeMemberSum',
-        'credit',
-        'diff',
-        'firstMember',
-        'monthlyData'
-    ));
+return view('families.combined-balances', compact(
+    'family',
+    'categories',
+    'data',
+    'users',
+    'year',
+    'minYear',
+    'currentYear',
+    'ownerSum',
+    'memberTotals',
+    'allTimeOwnerSum',
+    'allTimeMemberSum',
+    'credit',
+    'diff',
+    'firstMember',
+    'monthlyData'
+));
+
 }
 
 }

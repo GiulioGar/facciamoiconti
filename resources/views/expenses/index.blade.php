@@ -174,18 +174,21 @@
             @error('amount')<div class="invalid-feedback">{{ $message }}</div>@enderror
           </div>
 
-          {{-- Mese --}}
-          <div class="mb-3">
-            <label class="form-label">Mese</label>
-            <select name="date" class="form-select @error('date') is-invalid @enderror" required>
-              @foreach($months as $m)
-                <option value="{{ $m }}" {{ old('date') == $m ? 'selected' : '' }}>
-                  {{ \Carbon\Carbon::createFromFormat('Y-m', $m)->locale('it')->isoFormat('MMMM YYYY') }}
-                </option>
-              @endforeach
-            </select>
-            @error('date')<div class="invalid-feedback">{{ $message }}</div>@enderror
-          </div>
+                    {{-- Data --}}
+                    <div class="mb-3">
+                    <label class="form-label">Data</label>
+                    <input
+                        type="date"
+                        name="date"
+                        class="form-control @error('date') is-invalid @enderror"
+                        value="{{ old('date') }}"
+                        required
+                    >
+                    @error('date')
+                        <div class="invalid-feedback">{{ $message }}</div>
+                    @enderror
+                    </div>
+
 
           {{-- Budget --}}
           <div class="mb-3">

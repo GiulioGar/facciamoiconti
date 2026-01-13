@@ -434,6 +434,23 @@ public function rosa()
         ['index'=>25, 'role_token'=>'Pc',  'title'=>'Slot 24: PC – Low/vice','level'=>'Low','hint'=>'Vice PC o giovane low-cost',                      'base_perc'=>0.001],
     ];
 
+    // --- OVERRIDE RUOLI SLOT (da sessione) -------------------------------------
+// Se la modale "Modifica ruolo" ha salvato in sessione, li applichiamo qui.
+$overrides = session('slot_overrides', []);
+$validTokens = ['Por','Dc','Ds','Dd','E','M','C','T','W','A','Pc'];
+
+foreach ($slots as &$s) {
+    $idx = (int) $s['index'];
+    if (isset($overrides[$idx])) {
+        $tok = (string) $overrides[$idx];
+        if (in_array($tok, $validTokens, true)) {
+            $s['role_token'] = $tok; // 👈 aggiorna il ruolo dello slot
+        }
+    }
+}
+unset($s);
+
+
     // --- STATO ATTUALE -------------------------------------------------------
     $spentTotal     = \App\Models\FantaRosa::sum('costo');
     $remainingTotal = max(0, $teamBudget - $spentTotal);
@@ -800,6 +817,32 @@ private static function stddev(\Illuminate\Support\Collection $values): float
     foreach ($values as $v) { $d = ((float)$v) - $mean; $acc += $d * $d; }
     return sqrt($acc / ($n - 1));
 }
+
+public function updateSlotRole(Request $request)
+{
+    $v = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        'slot_index'     => ['required','integer','min:0','max:25'],
+        'new_role_token' => ['required','in:Por,Dc,Ds,Dd,E,M,C,T,W,A,Pc'],
+    ], [
+        'slot_index.required' => 'Slot mancante.',
+        'new_role_token.in'   => 'Ruolo non valido.',
+    ]);
+
+    if ($v->fails()) {
+        return back()->withErrors($v)->with('error', 'Dati non validi per aggiornare il ruolo.');
+    }
+
+    $slotIndex = (int) $request->input('slot_index');
+    $newRole   = $request->input('new_role_token');
+
+    // Salvo un override in sessione (puoi passare a DB quando vuoi)
+    $overrides = session('slot_overrides', []);
+    $overrides[$slotIndex] = $newRole;
+    session(['slot_overrides' => $overrides]);
+
+    return back()->with('success', "Ruolo dello slot #".($slotIndex+1)." aggiornato a {$newRole}.");
+}
+
 
 
 }

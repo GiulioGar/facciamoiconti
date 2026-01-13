@@ -105,9 +105,32 @@
 @endpush
 
 @section('navbar-title')
-  <span class="d-flex align-items-center gap-2">
-  <i class="bi bi-house-heart-fill fs-5 text-primary"></i>
-  <span class="fw-semibold">Conti di famiglia</span>
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+
+  <!-- Titolo -->
+  <div class="d-flex align-items-center gap-2">
+    <i class="bi bi-house-heart-fill fs-5 text-primary"></i>
+    <span class="fw-semibold">Conti di famiglia</span>
+  </div>
+
+  <!-- Selettore anno -->
+  <form method="GET" class="d-flex align-items-center gap-2 mb-0">
+    <label for="year" class="fw-semibold mb-0">Anno:</label>
+
+    <select name="year" id="year"
+            class="form-select form-select-sm w-auto"
+            onchange="this.form.submit()">
+      @for ($y = $currentYear; $y >= $minYear; $y--)
+        <option value="{{ $y }}" {{ $y == $year ? 'selected' : '' }}>
+          {{ $y }}
+        </option>
+      @endfor
+    </select>
+  </form>
+
+</div>
+
+
 </span>
 
 @endsection

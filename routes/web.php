@@ -131,10 +131,13 @@ Route::post('/listone/update-levels', [FantacalcioController::class, 'updateLeve
 // Update di un singolo livello (ricalcola anche i crediti)
 Route::post('/listone/{id}/level', [FantacalcioController::class, 'updateLevel'])
     ->whereNumber('id')->name('listone.updateLevel');
-    
+
 
     Route::post('/listone/{id}/credits', [\App\Http\Controllers\FantacalcioController::class, 'updateCredits'])
     ->name('listone.updateCredits');
+
+    Route::post('/slot/update-role', [\App\Http\Controllers\FantacalcioController::class, 'updateSlotRole'])
+    ->name('slot.updateRole');
 
 });
 

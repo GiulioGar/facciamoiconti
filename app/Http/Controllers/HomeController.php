@@ -138,19 +138,10 @@ class HomeController extends Controller
                  + $balance->cash;
 
         // 6) Ultimo snapshot globale
-        $latestMonth = FinancialBalance::where('user_id',   $user->id)
-            ->where('family_id', $family->id ?? 0)
-            ->max('accounting_month');
-
-        if ($latestMonth) {
-            $latestBalance = FinancialBalance::where('user_id', $user->id)
-                ->where('family_id', $family->id ?? 0)
-                ->where('accounting_month', $latestMonth)
-                ->orderBy('id', 'desc')
-                ->first();
-        } else {
-            $latestBalance = null;
-        }
+$latestBalance = FinancialBalance::where('user_id', $user->id)
+    ->where('family_id', $family->id ?? 0)
+    ->orderBy('id', 'desc')
+    ->first();
 
         $latestTotal  = $latestBalance ? (
                           $latestBalance->bank_balance

@@ -104,7 +104,7 @@ public function store(Request $request)
 {
     $data = $request->validate([
         'amount'               => 'required|numeric|min:0.01',
-        'date'                 => 'required|date', // arriva "YYYY-MM" dal form, lo normalizziamo sotto
+        'date'                 => 'required|date', // YYYY-MM-DD dal calendario
         'expense_category_id'  => 'required|exists:expense_categories,id',
         'budget_category_id'   => 'required|exists:budget_categories,id',
         'note'                 => 'nullable|string',
@@ -116,36 +116,34 @@ public function store(Request $request)
     $familyId = (int) $data['family_id'];
     $amount   = (float) $data['amount'];
 
-    // Normalizza "YYYY-MM" -> primo giorno del mese
-    $normalizedDate = Carbon::createFromFormat('Y-m', $data['date'])
-                            ->startOfMonth()
-                            ->toDateString();
+    // Data completa selezionata dall’utente
+    $date = Carbon::parse($data['date'])->toDateString();
 
-    DB::transaction(function () use ($data, $userId, $familyId, $amount, $normalizedDate) {
+    DB::transaction(function () use ($data, $userId, $familyId, $amount, $date) {
 
         // 1) Crea la SPESA
         $expCat = ExpenseCategory::findOrFail($data['expense_category_id']);
-        $expense = Expense::create([
-            'description'           => $expCat->name,
-            'amount'                => $amount,
-            'date'                  => $normalizedDate,
-            'expense_category_id'   => $data['expense_category_id'],
-            'budget_category_id'    => $data['budget_category_id'],
-            'note'                  => $data['note'] ?? null,
-            'family_id'             => $familyId,
-            'user_id'               => $userId,
+
+        Expense::create([
+            'description'         => $expCat->name,
+            'amount'              => $amount,
+            'date'                => $date,
+            'expense_category_id' => $data['expense_category_id'],
+            'budget_category_id'  => $data['budget_category_id'],
+            'note'                => $data['note'] ?? null,
+            'family_id'           => $familyId,
+            'user_id'             => $userId,
         ]);
 
-        // 2) Crea nuova RIGA in financial_balances (snapshot) se va allocata
+        // 2) Snapshot financial_balances (solo se allocata)
         if ($data['wallet_allocation'] !== 'none') {
 
-            // Prendi l'ultima riga per user+family
             $last = FinancialBalance::where('user_id', $userId)
-                    ->where('family_id', $familyId)
-                    ->orderByDesc('id')
-                    ->first();
+                ->where('family_id', $familyId)
+                ->orderByDesc('id')
+                ->first();
 
-            // Base (fallback 0 se non c'è alcuna riga)
+            // Base di partenza
             $base = [
                 'bank_balance'   => (float) ($last->bank_balance   ?? 0),
                 'other_accounts' => (float) ($last->other_accounts ?? 0),
@@ -160,25 +158,26 @@ public function store(Request $request)
                 'bank' => 'bank_balance',
                 'cash' => 'cash',
             ];
-            $targetCol = $columnMap[$data['wallet_allocation']] ?? null;
 
-            if ($targetCol) {
-                // SOTTRAI l'importo
-                $base[$targetCol] = round($base[$targetCol] - $amount, 2);
+            if (isset($columnMap[$data['wallet_allocation']])) {
+                $base[$columnMap[$data['wallet_allocation']]] =
+                    round($base[$columnMap[$data['wallet_allocation']]] - $amount, 2);
             }
 
             FinancialBalance::create(array_merge($base, [
                 'user_id'          => $userId,
                 'family_id'        => $familyId,
-                'accounting_month' => Carbon::parse($normalizedDate)->toDateString(), // primo giorno del mese
+                // Rimane mensile: primo giorno del mese della spesa
+                'accounting_month' => Carbon::parse($date)->startOfMonth()->toDateString(),
             ]));
         }
     });
 
     return redirect()
-           ->route('expenses.index')
-           ->with('success','Spesa registrata con successo');
+        ->route('expenses.index')
+        ->with('success', 'Spesa registrata con successo');
 }
+
 
 
     // … eventuali metodi edit, update, destroy …

@@ -34,6 +34,10 @@
   .tag-spesa { min-width: 120px; text-align: right; font-weight: 600; }
   .assigned .slot-title { color:#111827; }
   .assigned .slot-hint  { color:#374151; }
+
+  .edit-slot-role i { font-size: 1rem; }
+.edit-slot-role:hover { color: var(--bs-primary); text-decoration: none; }
+
 </style>
 @endpush
 
@@ -77,35 +81,45 @@
           <div class="card slot-card {{ $assigned ? 'assigned' : '' }}">
             <div class="card-body py-2 d-flex justify-content-between align-items-center gap-3 flex-wrap">
 
-              {{-- SINISTRA --}}
-              <div class="flex-grow-1">
-                <div class="d-flex align-items-center gap-2 mb-1">
-                  <span class="chip bg-light border">
-                    {{ $slot['role_token'] }}
-                  </span>
-                  <span class="chip bg-light border">
-                    {{ $slot['level'] }}
-                  </span>
-                </div>
+{{-- SINISTRA --}}
+<div class="flex-grow-1">
+  <div class="d-flex align-items-center gap-2 mb-1">
+    <span class="chip bg-light border">
+      {{ $slot['role_token'] }}
+    </span>
+    <span class="chip bg-light border">
+      {{ $slot['level'] }}
+    </span>
 
-                @if($assigned)
-                  <div class="slot-title">
-                    #{{ $slot['index']+1 }} — {{ $assigned['nome'] }}
-                    <small class="text-muted">({{ $assigned['roles'] }}, {{ $assigned['team'] }})</small>
-                  </div>
-                  <div class="slot-hint">
-                    Ruolo slot: <strong>{{ $slot['role_token'] }}</strong> — {{ $slot['level'] }}
-                  </div>
-                @else
-                  <div class="slot-title">
-                    #{{ $slot['index']+1 }} — {{ $slot['title'] }}
-                  </div>
-                  <div class="slot-hint">
-                    Ruolo: <strong>{{ $slot['role_token'] }}</strong> — Livello: <strong>{{ $slot['level'] }}</strong>
-                    @if(!empty($slot['hint'])) <br><span>{{ $slot['hint'] }}</span> @endif
-                  </div>
-                @endif
-              </div>
+    {{-- icona matita per edit ruolo slot --}}
+    <button type="button"
+            class="btn btn-sm btn-link p-0 ms-1 text-muted edit-slot-role"
+            title="Modifica ruolo dello slot"
+            data-slot-index="{{ $slot['index'] }}"
+            data-current-role="{{ $slot['role_token'] }}">
+      <i class="bi bi-pencil-square"></i>
+    </button>
+  </div>
+
+  @if($assigned)
+    <div class="slot-title">
+      #{{ $slot['index']+1 }} — {{ $assigned['nome'] }}
+      <small class="text-muted">({{ $assigned['roles'] }}, {{ $assigned['team'] }})</small>
+    </div>
+    <div class="slot-hint">
+      Ruolo slot: <strong>{{ $slot['role_token'] }}</strong> — {{ $slot['level'] }}
+    </div>
+  @else
+    <div class="slot-title">
+      #{{ $slot['index']+1 }} — {{ $slot['title'] }}
+    </div>
+    <div class="slot-hint">
+      Ruolo: <strong>{{ $slot['role_token'] }}</strong> — Livello: <strong>{{ $slot['level'] }}</strong>
+      @if(!empty($slot['hint'])) <br><span>{{ $slot['hint'] }}</span> @endif
+    </div>
+  @endif
+</div>
+
 
               {{-- DESTRA: consigliato / costo --}}
               <div class="tag-spesa">
@@ -182,6 +196,49 @@
     </form>
   </div>
 </div>
+
+{{-- Modal Modifica Ruolo Slot --}}
+<div class="modal fade" id="modalEditSlotRole" tabindex="-1" aria-labelledby="modalEditSlotRoleLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" method="POST" action="{{ route('fantacalcio.slot.updateRole') }}">
+      @csrf
+      <input type="hidden" name="slot_index" id="edit-slot-index">
+
+      <div class="modal-header">
+        <h5 class="modal-title" id="modalEditSlotRoleLabel">Modifica ruolo slot</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Chiudi"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="mb-3">
+          <label for="edit-role-token" class="form-label">Nuovo ruolo (token Mantra)</label>
+          <select id="edit-role-token" name="new_role_token" class="form-select" required>
+            <option value="Por">Por</option>
+            <option value="Dc">Dc</option>
+            <option value="Ds">Ds</option>
+            <option value="Dd">Dd</option>
+            <option value="E">E</option>
+            <option value="M">M</option>
+            <option value="C">C</option>
+            <option value="T">T</option>
+            <option value="W">W</option>
+            <option value="A">A</option>
+            <option value="Pc">Pc</option>
+          </select>
+          <div class="form-text">
+            Se cambi il ruolo, la ricerca giocatori per questo slot userà il nuovo token.
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-light" data-bs-dismiss="modal">Annulla</button>
+        <button type="submit" class="btn btn-primary">Salva ruolo</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 
 @push('scripts')
 <script>
@@ -265,5 +322,29 @@
     $submit.disabled = !(document.getElementById('modal-external-id').value && this.value !== '' && Number(this.value) >= 0);
   });
 })();
+
+
+// --- Modifica ruolo slot (icona matita)
+document.querySelectorAll('.edit-slot-role').forEach(btn => {
+  btn.addEventListener('click', function(){
+    const slotIndex   = this.getAttribute('data-slot-index');
+    const currentRole = this.getAttribute('data-current-role');
+
+    // setto i campi della modale
+    document.getElementById('edit-slot-index').value = slotIndex;
+
+    const sel = document.getElementById('edit-role-token');
+    if (sel && currentRole) {
+      // se il valore esiste tra le option, selezionalo
+      for (const opt of sel.options) {
+        opt.selected = (opt.value === currentRole);
+      }
+    }
+
+    const m = new bootstrap.Modal(document.getElementById('modalEditSlotRole'));
+    m.show();
+  });
+});
+
 </script>
 @endpush
