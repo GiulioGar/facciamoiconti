@@ -77,6 +77,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/families/summary', [FamilyBudgetController::class, 'index'])
         ->name('families.summary');
 
+// Storico annuale
+Route::get('/history', [HomeController::class, 'history'])
+    ->name('home.history');
+
+
 /**
  * ===========================
  *        FANTACALCIO

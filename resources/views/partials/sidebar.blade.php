@@ -46,6 +46,14 @@
                 </a>
                 </li>
 
+                    {{-- Storico --}}
+    <li class="menu-item {{ request()->routeIs('home.history') ? 'active' : '' }}">
+      <a href="{{ route('home.history') }}" class="menu-link">
+        <i class="menu-icon tf-icons bx bx-time-five"></i>
+        <div class="text-truncate" data-i18n="Storico">Storico</div>
+      </a>
+    </li>
+
               </ul>
             </li>
 

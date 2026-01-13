@@ -340,4 +340,167 @@ $latestBalance = FinancialBalance::where('user_id', $user->id)
 
         return view('home', array_merge($viewData));
     }
+
+
+public function history(Request $request)
+{
+    $user = Auth::user();
+
+    // ===============================
+    // 1) Gestione ANNI (robusta)
+    // ===============================
+    $maxYear = Carbon::now()->year;
+    $minYear = 2025;
+
+    $year = (int) $request->get('year', $maxYear);
+    $year = max(min($year, $maxYear), $minYear);
+
+    // Confronto attivo SOLO dal 2026 in poi
+    $comparisonEnabled = $year > 2025;
+    $previousYear = $comparisonEnabled ? $year - 1 : null;
+
+    // ===============================
+    // 2) Famiglia (stessa logica Home)
+    // ===============================
+    if ($user->role === 'capofamiglia') {
+        $family = Family::where('owner_id', $user->id)->first();
+    } else {
+        $family = $user->families()
+            ->wherePivot('status', 'accepted')
+            ->first();
+    }
+
+    if (! $family) {
+        abort(403);
+    }
+
+    // ===============================
+    // 3) Categorie
+    // ===============================
+    $categories = BudgetCategory::orderBy('sort_order')->get();
+
+    $incomeByCategory  = [];
+    $expenseByCategory = [];
+
+    foreach ($categories as $cat) {
+
+        // ENTRATE per mese (anno selezionato)
+        $incomeByCategory[$cat->id] = DB::table('income_allocations as ia')
+            ->join('incomes as i', 'ia.income_id', '=', 'i.id')
+            ->select(
+                DB::raw('MONTH(i.date) as month'),
+                DB::raw('SUM(ia.amount) as total')
+            )
+            ->where('ia.category_id', $cat->id)
+            ->where('i.user_id', $user->id)
+            ->where('i.family_id', $family->id)
+            ->whereYear('i.date', $year)
+            ->groupBy('month')
+            ->pluck('total','month')
+            ->toArray();
+
+        // USCITE per mese (anno selezionato)
+        $expenseByCategory[$cat->id] = DB::table('expenses')
+            ->select(
+                DB::raw('MONTH(date) as month'),
+                DB::raw('SUM(amount) as total')
+            )
+            ->where('budget_category_id', $cat->id)
+            ->where('user_id', $user->id)
+            ->where('family_id', $family->id)
+            ->whereYear('date', $year)
+            ->groupBy('month')
+            ->pluck('total','month')
+            ->toArray();
+    }
+
+    // ===============================
+    // 4) RESOCONTO ANNO SELEZIONATO
+    // ===============================
+    $summaryIncomeByMonth = DB::table('incomes')
+        ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
+        ->where('user_id', $user->id)
+        ->where('family_id', $family->id)
+        ->whereYear('date', $year)
+        ->groupBy('month')
+        ->pluck('total','month')
+        ->toArray();
+
+    $summaryExpenseByMonth = DB::table('expenses')
+        ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
+        ->where('user_id', $user->id)
+        ->where('family_id', $family->id)
+        ->whereYear('date', $year)
+        ->groupBy('month')
+        ->pluck('total','month')
+        ->toArray();
+
+    $summaryGainByMonth = [];
+    for ($m = 1; $m <= 12; $m++) {
+        $summaryGainByMonth[$m] =
+            intval($summaryIncomeByMonth[$m] ?? 0)
+          - intval($summaryExpenseByMonth[$m] ?? 0);
+    }
+
+    // =====================================================
+    // 5) RESOCONTO ANNO PRECEDENTE (SOLO SE ABILITATO)
+    // =====================================================
+    $prevSummaryIncomeByMonth = [];
+    $prevSummaryExpenseByMonth = [];
+    $prevSummaryGainByMonth   = [];
+
+    if ($comparisonEnabled) {
+
+        $prevSummaryIncomeByMonth = DB::table('incomes')
+            ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
+            ->where('user_id', $user->id)
+            ->where('family_id', $family->id)
+            ->whereYear('date', $previousYear)
+            ->groupBy('month')
+            ->pluck('total','month')
+            ->toArray();
+
+        $prevSummaryExpenseByMonth = DB::table('expenses')
+            ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
+            ->where('user_id', $user->id)
+            ->where('family_id', $family->id)
+            ->whereYear('date', $previousYear)
+            ->groupBy('month')
+            ->pluck('total','month')
+            ->toArray();
+
+        for ($m = 1; $m <= 12; $m++) {
+            $prevSummaryGainByMonth[$m] =
+                intval($prevSummaryIncomeByMonth[$m] ?? 0)
+              - intval($prevSummaryExpenseByMonth[$m] ?? 0);
+        }
+    }
+
+    // ===============================
+    // 6) View
+    // ===============================
+    return view('home-history', [
+        'year'                       => $year,
+        'minYear'                    => $minYear,
+        'maxYear'                    => $maxYear,
+        'comparisonEnabled'          => $comparisonEnabled,
+        'previousYear'               => $previousYear,
+
+        'categories'                 => $categories,
+        'incomeByCategory'           => $incomeByCategory,
+        'expenseByCategory'          => $expenseByCategory,
+
+        'summaryIncomeByMonth'       => $summaryIncomeByMonth,
+        'summaryExpenseByMonth'      => $summaryExpenseByMonth,
+        'summaryGainByMonth'         => $summaryGainByMonth,
+
+        'prevSummaryIncomeByMonth'   => $prevSummaryIncomeByMonth,
+        'prevSummaryExpenseByMonth'  => $prevSummaryExpenseByMonth,
+        'prevSummaryGainByMonth'     => $prevSummaryGainByMonth,
+    ]);
 }
+
+
+}
+
+
