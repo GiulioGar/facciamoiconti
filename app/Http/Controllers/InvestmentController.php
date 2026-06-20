@@ -56,12 +56,12 @@ class InvestmentController extends Controller
         // 5) Aggiorna solo il campo investments per il mese selezionato (upsert)
         FinancialBalance::updateOrCreate(
             [
-                ‘user_id’          => Auth::id(),
-                ‘family_id’        => (int) $data[‘family_id’],
-                ‘accounting_month’ => $periodDate,
+                'user_id'          => Auth::id(),
+                'family_id'        => (int) $data['family_id'],
+                'accounting_month' => $periodDate,
             ],
             [
-                ‘investments’ => $newInvestedTotal,
+                'investments' => $newInvestedTotal,
             ]
         );
 

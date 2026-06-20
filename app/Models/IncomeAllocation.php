@@ -14,7 +14,7 @@ class IncomeAllocation extends Model
     ];
 
     /**
-     * Relazione con l’entrata principale.
+     * Relazione con l'entrata principale.
      */
     public function income()
     {

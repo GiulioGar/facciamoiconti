@@ -18,7 +18,7 @@ class Handler extends ExceptionHandler
     ];
 
     /**
-     * Input che non vengono mai “flashati” nelle validation exception.
+     * Input che non vengono mai "flashati" nelle validation exception.
      *
      * @var array<int, string>
      */

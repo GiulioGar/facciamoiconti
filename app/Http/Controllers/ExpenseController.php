@@ -34,7 +34,7 @@ class ExpenseController extends Controller
                   ->where('status','accepted');
             })->first();
 
-        // Se non c’è una famiglia valida, mostro un avviso/vista
+        // Se non c'è una famiglia valida, mostro un avviso/vista
         if (! $family) {
             return view('expenses.index', [
                 'expenses' => collect(),
@@ -42,7 +42,7 @@ class ExpenseController extends Controller
             ])->with('warning','Devi prima creare o aderire a una famiglia');
         }
 
-        // Carica le uscite solo dell’utente corrente
+        // Carica le uscite solo dell'utente corrente
         $expenses = Expense::with(['expenseCategory','budgetCategory'])
             ->where('family_id', $family->id)
             ->where('user_id',   $user->id)               // ← filtro aggiunto
@@ -53,7 +53,7 @@ class ExpenseController extends Controller
         $expCats    = ExpenseCategory::orderBy('sort_order')->get();
         $budgetCats = BudgetCategory::orderBy('sort_order')->get();
 
-        // Genera un array di mesi (YYYY-MM) dall’attuale a 3 anni fa
+        // Genera un array di mesi (YYYY-MM) dall'attuale a 3 anni fa
         $months = collect();
         for ($i = 0; $i <= 36; $i++) {
             $months->push(now()->subMonths($i)->format('Y-m'));
@@ -121,7 +121,7 @@ public function store(Request $request)
     $familyId = (int) $data['family_id'];
     $amount   = (float) $data['amount'];
 
-    // Data completa selezionata dall’utente
+    // Data completa selezionata dall'utente
     $date = Carbon::parse($data['date'])->toDateString();
 
     DB::transaction(function () use ($data, $userId, $familyId, $amount, $date) {
