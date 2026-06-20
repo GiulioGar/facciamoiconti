@@ -58,8 +58,6 @@
   <script src="{{ asset('assets/vendor/libs/apex-charts/apexcharts.js') }}"></script>
   <script src="{{ asset('assets/js/main.js') }}"></script>
   <script src="{{ asset('assets/js/dashboards-analytics.js') }}"></script>
-<script src="{{ asset('vendor/jquery/jquery.min.js') }}"></script>
-<script src="{{ asset('vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
 
     @stack('scripts')
 

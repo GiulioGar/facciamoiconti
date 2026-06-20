@@ -11,6 +11,7 @@ use App\Models\Family;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use App\Models\FinancialBalance;
+use App\Models\WalletMovement;
 
 class ExpenseController extends Controller
 {
@@ -112,6 +113,10 @@ public function store(Request $request)
         'wallet_allocation'    => 'required|in:bank,cash,none',
     ]);
 
+    if (! Auth::user()->belongsToFamily((int) $data['family_id'])) {
+        abort(403, 'Non sei membro di questa famiglia.');
+    }
+
     $userId   = Auth::id();
     $familyId = (int) $data['family_id'];
     $amount   = (float) $data['amount'];
@@ -122,9 +127,9 @@ public function store(Request $request)
     DB::transaction(function () use ($data, $userId, $familyId, $amount, $date) {
 
         // 1) Crea la SPESA
-        $expCat = ExpenseCategory::findOrFail($data['expense_category_id']);
+        $expCat  = ExpenseCategory::findOrFail($data['expense_category_id']);
 
-        Expense::create([
+        $expense = Expense::create([
             'description'         => $expCat->name,
             'amount'              => $amount,
             'date'                => $date,
@@ -135,41 +140,18 @@ public function store(Request $request)
             'user_id'             => $userId,
         ]);
 
-        // 2) Snapshot financial_balances (solo se allocata)
+        // 2) Registra il movimento wallet (solo se allocata)
         if ($data['wallet_allocation'] !== 'none') {
-
-            $last = FinancialBalance::where('user_id', $userId)
-                ->where('family_id', $familyId)
-                ->orderByDesc('id')
-                ->first();
-
-            // Base di partenza
-            $base = [
-                'bank_balance'   => (float) ($last->bank_balance   ?? 0),
-                'other_accounts' => (float) ($last->other_accounts ?? 0),
-                'cash'           => (float) ($last->cash           ?? 0),
-                'insurances'     => (float) ($last->insurances     ?? 0),
-                'investments'    => (float) ($last->investments    ?? 0),
-                'debt_credit'    => (float) ($last->debt_credit    ?? 0),
-            ];
-
-            // Mappa colonna target
-            $columnMap = [
-                'bank' => 'bank_balance',
-                'cash' => 'cash',
-            ];
-
-            if (isset($columnMap[$data['wallet_allocation']])) {
-                $base[$columnMap[$data['wallet_allocation']]] =
-                    round($base[$columnMap[$data['wallet_allocation']]] - $amount, 2);
-            }
-
-            FinancialBalance::create(array_merge($base, [
-                'user_id'          => $userId,
-                'family_id'        => $familyId,
-                // Rimane mensile: primo giorno del mese della spesa
-                'accounting_month' => Carbon::parse($date)->startOfMonth()->toDateString(),
-            ]));
+            WalletMovement::create([
+                'user_id'     => $userId,
+                'family_id'   => $familyId,
+                'account'     => $data['wallet_allocation'], // 'bank' o 'cash'
+                'amount'      => -$amount,                   // negativo = uscita
+                'source_type' => 'expense',
+                'source_id'   => $expense->id,
+                'date'        => $date,
+                'note'        => $expCat->name,
+            ]);
         }
     });
 

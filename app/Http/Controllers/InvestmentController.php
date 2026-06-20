@@ -30,6 +30,10 @@ class InvestmentController extends Controller
             'investments.*.invested_balance'   => 'required|numeric|min:0',
         ]);
 
+        if (! Auth::user()->belongsToFamily((int) $data['family_id'])) {
+            abort(403, 'Non sei membro di questa famiglia.');
+        }
+
         // 2) Converto YYYY-MM → YYYY-MM-01
         $periodDate = Carbon::createFromFormat('Y-m', $data['accounting_month'])
                         ->startOfMonth()
@@ -49,36 +53,17 @@ class InvestmentController extends Controller
         // 4) Calcolo il totale di tutti i "Saldo" (current_balance) dalla modale
         $newInvestedTotal = array_sum(array_column($data['investments'], 'current_balance'));
 
-        // 5) Prelevo l’ultimo snapshot in financial_balances
-        $lastBalance = FinancialBalance::where('user_id', Auth::id())
-            ->where('family_id', $data['family_id'])
-            ->orderBy('id', 'desc')
-            ->first();
-
-        // 6) Clono tutti i campi esistenti o inizializzo a zero
-        if ($lastBalance) {
-            $balanceData = $lastBalance->toArray();
-            unset($balanceData['id'], $balanceData['created_at'], $balanceData['updated_at']);
-        } else {
-            $balanceData = [
-                'user_id'          => Auth::id(),
-                'family_id'        => $data['family_id'],
-                'bank_balance'     => 0,
-                'other_accounts'   => 0,
-                'cash'             => 0,
-                'insurances'       => 0,
-                'investments'      => 0,
-                'debt_credit'      => 0,
-                'accounting_month' => $periodDate,
-            ];
-        }
-
-        // 7) Sostituisco solo il campo 'investments' con il totale dei Saldi appena calcolato
-        $balanceData['investments']      = $newInvestedTotal;
-        $balanceData['accounting_month'] = $periodDate;
-
-        // 8) Creo sempre un nuovo snapshot in financial_balances
-        FinancialBalance::create($balanceData);
+        // 5) Aggiorna solo il campo investments per il mese selezionato (upsert)
+        FinancialBalance::updateOrCreate(
+            [
+                ‘user_id’          => Auth::id(),
+                ‘family_id’        => (int) $data[‘family_id’],
+                ‘accounting_month’ => $periodDate,
+            ],
+            [
+                ‘investments’ => $newInvestedTotal,
+            ]
+        );
 
         // 9) Redirect con messaggio di successo
         return back()->with('success', 'Investimenti salvati e snapshot aggiornato correttamente');

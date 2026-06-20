@@ -11,6 +11,7 @@ use Carbon\Carbon;
 use App\Models\Family;
 use Illuminate\Support\Facades\DB;
 use App\Models\FinancialBalance;
+use App\Models\WalletMovement;
 
 class IncomeController extends Controller
 {
@@ -44,6 +45,10 @@ public function store(Request $request)
         'wallet_allocation' => 'required|in:bank,cash,none',
     ]);
 
+    if (! Auth::user()->belongsToFamily((int) $data['family_id'])) {
+        abort(403, 'Non sei membro di questa famiglia.');
+    }
+
     DB::transaction(function() use ($data) {
 
         // 1) Crea l'entrata
@@ -70,48 +75,18 @@ public function store(Request $request)
             }
         }
 
-        // 3) Scrivi una NUOVA riga in financial_balances se richiesto
+        // 3) Registra il movimento wallet se richiesto
         if ($data['wallet_allocation'] !== 'none') {
-
-            $userId   = Auth::id();
-            $familyId = (int) $data['family_id'];
-            $amount   = (float) $data['amount'];
-
-            // Ultima riga per user+family
-            $last = FinancialBalance::where('user_id', $userId)
-                    ->where('family_id', $familyId)
-                    ->orderByDesc('id')
-                    ->first();
-
-            // Base: se non esiste nulla, parti da 0
-            $base = [
-                'bank_balance'   => (float) ($last->bank_balance   ?? 0),
-                'other_accounts' => (float) ($last->other_accounts ?? 0),
-                'cash'           => (float) ($last->cash           ?? 0),
-                'insurances'     => (float) ($last->insurances     ?? 0),
-                'investments'    => (float) ($last->investments    ?? 0),
-                'debt_credit'    => (float) ($last->debt_credit    ?? 0),
-            ];
-
-            // Colonna target in base alla scelta
-            $columnMap = [
-                'bank' => 'bank_balance',
-                'cash' => 'cash',
-            ];
-            $targetCol = $columnMap[$data['wallet_allocation']] ?? null;
-
-            if ($targetCol) {
-                $base[$targetCol] = round($base[$targetCol] + $amount, 2);
-            }
-
-            // accounting_month = primo giorno del mese dell'entrata
-            $accountingMonth = \Carbon\Carbon::parse($data['date'])->startOfMonth()->toDateString();
-
-            FinancialBalance::create(array_merge($base, [
-                'user_id'         => $userId,
-                'family_id'       => $familyId,
-                'accounting_month'=> $accountingMonth,
-            ]));
+            WalletMovement::create([
+                'user_id'     => Auth::id(),
+                'family_id'   => (int) $data['family_id'],
+                'account'     => $data['wallet_allocation'], // 'bank' o 'cash'
+                'amount'      => (float) $data['amount'],    // positivo = entrata
+                'source_type' => 'income',
+                'source_id'   => $income->id,
+                'date'        => $data['date'],
+                'note'        => $data['description'],
+            ]);
         }
     });
 

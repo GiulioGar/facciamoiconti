@@ -12,6 +12,11 @@ class Family extends Model
     protected $fillable = [
         'nickname',
         'owner_id',
+        'credit',
+    ];
+
+    protected $casts = [
+        'credit' => 'decimal:2',
     ];
 
     public function owner()

@@ -279,7 +279,7 @@
           <tr>
             <th>Mese</th>
             <th style="color:#008cbd">{{ $family->owner->nickname }}</th>
-            <th style="color:#bc29c6">{{ $firstMember->nickname ?? 'N/A' }}</th>
+            <th style="color:#bc29c6">{{ $memberLabel }}</th>
           </tr>
         </thead>
         <tbody>

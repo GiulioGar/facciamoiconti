@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Storage; // === aggiunto ===
 use App\Services\FamilyBudgetSummary;   // === aggiunto ===
 use App\Models\Family;
 use App\Models\FinancialBalance;
+use App\Models\WalletMovement;
 use App\Models\BudgetCategory;
 use App\Models\IncomeAllocation;
 use App\Models\Income;
@@ -89,44 +90,50 @@ class HomeController extends Controller
             $balanceMonths[] = $cursor->copy()->subMonths($i)->format('Y-m');
         }
 
-        // 4) Snapshot per il mese selezionato
-        if ($family) {
-            $balance = FinancialBalance::where('user_id', $user->id)
-                ->where('family_id', $family->id)
-                ->where('accounting_month', $periodDate)
-                ->orderBy('id', 'desc')
-                ->first();
+        // 4) Calcolo saldi per il periodo selezionato
+        $periodEnd = $period->copy()->endOfMonth()->toDateString();
+        $familyId  = $family->id ?? 0;
 
-            $hasBalance = (bool) $balance;
-            if (! $balance) {
-                $balance = new FinancialBalance([
-                    'user_id'          => $user->id,
-                    'family_id'        => $family->id,
-                    'bank_balance'     => 0,
-                    'other_accounts'   => 0,
-                    'cash'             => 0,
-                    'insurances'       => 0,
-                    'investments'      => 0,
-                    'debt_credit'      => 0,
-                    'accounting_month' => $periodDate,
-                ]);
-            }
-        } else {
-            $hasBalance = false;
-            $balance = new FinancialBalance([
-                'user_id'          => $user->id,
-                'family_id'        => null,
-                'bank_balance'     => 0,
-                'other_accounts'   => 0,
-                'cash'             => 0,
-                'insurances'       => 0,
-                'investments'      => 0,
-                'debt_credit'      => 0,
-                'accounting_month' => $periodDate,
-            ]);
-        }
+        // Bank e cash: somma movimenti wallet fino alla fine del mese selezionato
+        $bankAtPeriod = (float) WalletMovement::where('user_id', $user->id)
+            ->where('family_id', $familyId)
+            ->where('account', 'bank')
+            ->whereDate('date', '<=', $periodEnd)
+            ->sum('amount');
 
-        // 5) Calcoli saldi
+        $cashAtPeriod = (float) WalletMovement::where('user_id', $user->id)
+            ->where('family_id', $familyId)
+            ->where('account', 'cash')
+            ->whereDate('date', '<=', $periodEnd)
+            ->sum('amount');
+
+        // Altri campi: dall'ultimo record manuale <= fine periodo
+        $manualAtPeriod = FinancialBalance::where('user_id', $user->id)
+            ->where('family_id', $familyId)
+            ->whereDate('accounting_month', '<=', $periodEnd)
+            ->orderBy('accounting_month', 'desc')
+            ->first();
+
+        $balance = new FinancialBalance([
+            'user_id'          => $user->id,
+            'family_id'        => $familyId,
+            'bank_balance'     => $bankAtPeriod,
+            'other_accounts'   => $manualAtPeriod->other_accounts ?? 0,
+            'cash'             => $cashAtPeriod,
+            'insurances'       => $manualAtPeriod->insurances     ?? 0,
+            'investments'      => $manualAtPeriod->investments     ?? 0,
+            'debt_credit'      => $manualAtPeriod->debt_credit     ?? 0,
+            'accounting_month' => $periodDate,
+        ]);
+
+        $hasBalance = WalletMovement::where('user_id', $user->id)
+            ->where('family_id', $familyId)
+            ->exists()
+            || FinancialBalance::where('user_id', $user->id)
+                ->where('family_id', $familyId)
+                ->exists();
+
+        // 5) Calcoli saldi periodo
         $total  = $balance->bank_balance
                  + $balance->other_accounts
                  + $balance->cash
@@ -137,25 +144,41 @@ class HomeController extends Controller
                  + $balance->other_accounts
                  + $balance->cash;
 
-        // 6) Ultimo snapshot globale
-$latestBalance = FinancialBalance::where('user_id', $user->id)
-    ->where('family_id', $family->id ?? 0)
-    ->orderBy('id', 'desc')
-    ->first();
+        // 6) Saldi complessivi più recenti (tutti i movimenti/record)
+        $latestBankBalance = (float) WalletMovement::where('user_id', $user->id)
+            ->where('family_id', $familyId)
+            ->where('account', 'bank')
+            ->sum('amount');
 
-        $latestTotal  = $latestBalance ? (
-                          $latestBalance->bank_balance
-                        + $latestBalance->other_accounts
-                        + $latestBalance->cash
-                        + $latestBalance->insurances
-                        + $latestBalance->investments
-                        + $latestBalance->debt_credit
-                        ) : 0;
-        $latestLiquid = $latestBalance ? (
-                          $latestBalance->bank_balance
-                        + $latestBalance->other_accounts
-                        + $latestBalance->cash
-                        ) : 0;
+        $latestCashBalance = (float) WalletMovement::where('user_id', $user->id)
+            ->where('family_id', $familyId)
+            ->where('account', 'cash')
+            ->sum('amount');
+
+        $latestManual = FinancialBalance::where('user_id', $user->id)
+            ->where('family_id', $familyId)
+            ->orderBy('accounting_month', 'desc')
+            ->first();
+
+        $latestBalance = new FinancialBalance([
+            'bank_balance'   => $latestBankBalance,
+            'other_accounts' => $latestManual->other_accounts ?? 0,
+            'cash'           => $latestCashBalance,
+            'insurances'     => $latestManual->insurances     ?? 0,
+            'investments'    => $latestManual->investments     ?? 0,
+            'debt_credit'    => $latestManual->debt_credit     ?? 0,
+        ]);
+
+        $latestTotal  = $latestBalance->bank_balance
+                      + $latestBalance->other_accounts
+                      + $latestBalance->cash
+                      + $latestBalance->insurances
+                      + $latestBalance->investments
+                      + $latestBalance->debt_credit;
+
+        $latestLiquid = $latestBalance->bank_balance
+                      + $latestBalance->other_accounts
+                      + $latestBalance->cash;
 
         // 7) Carica categorie per budget mensile
         $categories = BudgetCategory::orderBy('sort_order')->get();
@@ -224,7 +247,7 @@ $latestBalance = FinancialBalance::where('user_id', $user->id)
         foreach ($categories as $cat) {
             $sumIncAll = $totalIncomeAllYears[$cat->id]  ?? 0;
             $sumExpAll = $totalExpenseAllYears[$cat->id] ?? 0;
-            $start     = (Auth::id() === 1) ? $cat->start_amount : 0;
+            $start     = Auth::user()->is_admin ? $cat->start_amount : 0;
 
             $budgetTotalByCategory[$cat->id] = $start + $sumIncAll - $sumExpAll;
         }

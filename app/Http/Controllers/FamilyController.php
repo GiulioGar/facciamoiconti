@@ -172,76 +172,83 @@ if ($year > $currentYear) {
         return [$member->id => $sum];
     });
 
-    // Spese all-time (tutte le date) per differenza
+    // Credito storico letto dal DB (non più hardcoded)
+    $credit = (float) $family->credit;
+
+    // Spese all-time (tutte le date) — somma TUTTI i membri, non solo il primo
     $allTimeOwnerSum = $family->owner
         ->expenses()
         ->whereIn('expense_category_id', $commonIds)
         ->whereIn('budget_category_id', $budgetIds)
         ->sum('amount');
 
-    $firstMember = $family->members->first();
-    $allTimeMemberSum = $firstMember
-        ? $firstMember->expenses()
+    $allTimeMemberSum = $family->members->sum(function ($member) use ($commonIds, $budgetIds) {
+        return $member->expenses()
             ->whereIn('expense_category_id', $commonIds)
             ->whereIn('budget_category_id', $budgetIds)
-            ->sum('amount')
-        : 0;
+            ->sum('amount');
+    });
 
-    // Credito fisso
-    $credit = 1269;
+    // Differenza storica (usata anche nella view per il ricalcolo personalizzato)
+    $diff = ($allTimeOwnerSum + $credit) - $allTimeMemberSum;
 
-    // Net owner dopo credito
-    $netOwner = $allTimeOwnerSum + $credit;
+    // $firstMember rimane per il messaggio personalizzato nella card "Differenza"
+    // (funziona correttamente per famiglie a 2 persone)
+    $firstMember = $family->members->first();
 
-    // Differenza: positivo = owner in debito, negativo = owner in credito
-    $diff = $netOwner - $allTimeMemberSum;
+    // Label colonna membri nella tabella mensile
+    $memberLabel = $family->members->count() === 1
+        ? ($firstMember->nickname ?? 'Componente')
+        : 'Componenti';
 
+    // Dati mensili — somma TUTTI i membri per ogni mese
     $monthlyData = collect();
 
-for ($month = 1; $month <= 12; $month++) {
-    $monthName = ucfirst(Carbon::create()->month($month)->locale('it')->monthName);
+    for ($month = 1; $month <= 12; $month++) {
+        $monthName = ucfirst(Carbon::create()->month($month)->locale('it')->monthName);
 
-    $ownerMonthly = $family->owner
-        ->expenses()
-        ->whereIn('expense_category_id', $commonIds)
-        ->whereIn('budget_category_id', $budgetIds)
-        ->whereYear('date', $year)
-        ->whereMonth('date', $month)
-        ->sum('amount');
-
-    $memberMonthly = $firstMember
-        ? $firstMember->expenses()
+        $ownerMonthly = $family->owner
+            ->expenses()
             ->whereIn('expense_category_id', $commonIds)
             ->whereIn('budget_category_id', $budgetIds)
             ->whereYear('date', $year)
             ->whereMonth('date', $month)
-            ->sum('amount')
-        : 0;
+            ->sum('amount');
 
-    $monthlyData->push([
-        'month' => $monthName,
-        'owner' => $ownerMonthly,
-        'member' => $memberMonthly,
-    ]);
-}
+        $memberMonthly = $family->members->sum(function ($member) use ($commonIds, $budgetIds, $year, $month) {
+            return $member->expenses()
+                ->whereIn('expense_category_id', $commonIds)
+                ->whereIn('budget_category_id', $budgetIds)
+                ->whereYear('date', $year)
+                ->whereMonth('date', $month)
+                ->sum('amount');
+        });
 
-return view('families.combined-balances', compact(
-    'family',
-    'categories',
-    'data',
-    'users',
-    'year',
-    'minYear',
-    'currentYear',
-    'ownerSum',
-    'memberTotals',
-    'allTimeOwnerSum',
-    'allTimeMemberSum',
-    'credit',
-    'diff',
-    'firstMember',
-    'monthlyData'
-));
+        $monthlyData->push([
+            'month'  => $monthName,
+            'owner'  => $ownerMonthly,
+            'member' => $memberMonthly,
+        ]);
+    }
+
+    return view('families.combined-balances', compact(
+        'family',
+        'categories',
+        'data',
+        'users',
+        'year',
+        'minYear',
+        'currentYear',
+        'ownerSum',
+        'memberTotals',
+        'allTimeOwnerSum',
+        'allTimeMemberSum',
+        'credit',
+        'diff',
+        'firstMember',
+        'memberLabel',
+        'monthlyData'
+    ));
 
 }
 

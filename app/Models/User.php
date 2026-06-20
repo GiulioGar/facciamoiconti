@@ -18,7 +18,7 @@ class User extends Authenticatable
      * @var array<int, string>
      */
     protected $fillable = [
-'name', 'surname', 'email', 'password', 'nickname', 'role'
+        'name', 'surname', 'email', 'password', 'nickname', 'role', 'is_admin',
     ];
 
     /**
@@ -38,7 +38,20 @@ class User extends Authenticatable
      */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'is_admin'          => 'boolean',
     ];
+
+    public function belongsToFamily(int $familyId): bool
+    {
+        if ($this->ownedFamilies()->where('id', $familyId)->exists()) {
+            return true;
+        }
+
+        return $this->families()
+            ->where('families.id', $familyId)
+            ->wherePivot('status', 'accepted')
+            ->exists();
+    }
 
     public function ownedFamilies()
     {
@@ -65,6 +78,11 @@ public function expenses()
 public function incomes()
 {
     return $this->hasMany(Income::class);
+}
+
+public function walletMovements()
+{
+    return $this->hasMany(WalletMovement::class);
 }
 
 }
