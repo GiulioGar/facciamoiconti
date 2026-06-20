@@ -276,7 +276,7 @@ class HomeController extends Controller
             ->pluck('total','month')
             ->toArray();
 
-        // Calcolo il “Risultato” mese per mese (solo interi)
+        // Calcolo il "Risultato" mese per mese (solo interi)
         $summaryGainByMonth = [];
         for($m = 1; $m <= 12; $m++){
             $inc  = intval(round($summaryIncomeByMonth[$m]  ?? 0));
@@ -284,7 +284,7 @@ class HomeController extends Controller
             $summaryGainByMonth[$m] = $inc - $exp;
         }
 
-        // Totale dell’anno
+        // Totale dell'anno
         $totalSummaryIncome  = array_sum(array_map('intval', $summaryIncomeByMonth));
         $totalSummaryExpense = array_sum(array_map('intval', $summaryExpenseByMonth));
         $totalSummaryGain    = array_sum($summaryGainByMonth);
@@ -297,12 +297,12 @@ class HomeController extends Controller
         $latestInvestments = [];
         $investmentSummary = [];
 
-        $latestInvestmentsByCategory = Investment::where(‘user_id’, $user->id)
-            ->where(‘family_id’, $family->id ?? null)
-            ->orderByDesc(‘created_at’)
-            ->orderByDesc(‘id’)
+        $latestInvestmentsByCategory = Investment::where('user_id', $user->id)
+            ->where('family_id', $family->id ?? null)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->get()
-            ->groupBy(‘category_id’)
+            ->groupBy('category_id')
             ->map(function ($items) { return $items->first(); });
 
         foreach ($investmentCategories as $cat) {
