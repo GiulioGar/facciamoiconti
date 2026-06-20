@@ -196,7 +196,7 @@ class HomeController extends Controller
                 )
                 ->where('ia.category_id', $cat->id)
                 ->where('i.user_id',   $user->id)
-                ->where('i.family_id', $family->id)
+                ->where('i.family_id', $familyId)
                 ->whereYear('i.date',   $currentYear)      // <— Filtro anno
                 ->groupBy('month')
                 ->pluck('total','month')
@@ -212,7 +212,7 @@ class HomeController extends Controller
                 )
                 ->where('budget_category_id', $cat->id)
                 ->where('user_id',   $user->id)
-                ->where('family_id', $family->id)
+                ->where('family_id', $familyId)
                 ->whereYear('date',    $currentYear)      // <— Filtro anno
                 ->groupBy('month')
                 ->pluck('total','month')
@@ -229,13 +229,13 @@ class HomeController extends Controller
                 ->join('incomes as i', 'ia.income_id', '=', 'i.id')
                 ->where('ia.category_id',    $cat->id)
                 ->where('i.user_id',         $user->id)
-                ->where('i.family_id',       $family->id)
+                ->where('i.family_id',       $familyId)
                 ->sum('ia.amount');
 
             $totalExpenseAllYears[$cat->id] = DB::table('expenses')
                 ->where('budget_category_id', $cat->id)
                 ->where('user_id',            $user->id)
-                ->where('family_id',          $family->id)
+                ->where('family_id',          $familyId)
                 ->sum('amount');
         }
 
@@ -260,16 +260,18 @@ class HomeController extends Controller
         // ————————————————————————
         $summaryIncomeByMonth = DB::table('incomes')
             ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
-            ->where('user_id', auth()->id())
-            ->whereYear('date',    $currentYear)
+            ->where('user_id', $user->id)
+            ->where('family_id', $familyId)
+            ->whereYear('date', $currentYear)
             ->groupBy('month')
             ->pluck('total','month')
             ->toArray();
 
         $summaryExpenseByMonth = DB::table('expenses')
             ->select(DB::raw('MONTH(date) as month'), DB::raw('SUM(amount) as total'))
-            ->where('user_id', auth()->id())
-            ->whereYear('date',    $currentYear)
+            ->where('user_id', $user->id)
+            ->where('family_id', $familyId)
+            ->whereYear('date', $currentYear)
             ->groupBy('month')
             ->pluck('total','month')
             ->toArray();
@@ -295,14 +297,16 @@ class HomeController extends Controller
         $latestInvestments = [];
         $investmentSummary = [];
 
+        $latestInvestmentsByCategory = Investment::where(‘user_id’, $user->id)
+            ->where(‘family_id’, $family->id ?? null)
+            ->orderByDesc(‘created_at’)
+            ->orderByDesc(‘id’)
+            ->get()
+            ->groupBy(‘category_id’)
+            ->map->first();
+
         foreach ($investmentCategories as $cat) {
-            // prendi l’ultimo record per questa categoria
-            $last = Investment::where('user_id', auth()->id())
-                ->where('family_id', $family->id ?? null)
-                ->where('category_id', $cat->id)
-                ->orderBy('created_at', 'desc')
-                ->orderBy('id', 'desc')
-                ->first();
+            $last = $latestInvestmentsByCategory->get($cat->id);
 
             $curr = $last ? $last->current_balance  : 0;
             $inv  = $last ? $last->invested_balance : 0;
@@ -354,14 +358,7 @@ class HomeController extends Controller
             'latestInvestments'    => $latestInvestments,
         ];
 
-        // === aggiungi alla view i 5 valori centralizzati ===
-        $viewData['familiare'] = $familiare;
-        $viewData['extra']     = $extra;
-        $viewData['risparmi']  = $risparmi;
-        $viewData['personale'] = $personale;
-        $viewData['totale']    = $totale;
-
-        return view('home', array_merge($viewData));
+        return view('home', $viewData);
     }
 
 

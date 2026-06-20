@@ -21,7 +21,6 @@
     ['header' => 'dashboard-header-alt3',  'badge' => 'dashboard-badge'],
   ];
   $paletteCount = count($palettes);
-  $paletteCount = count($palettes);
 @endphp
 
 
@@ -146,9 +145,7 @@ $iconMap = [
 <div class="row">
 
 
-@php 
-    $palettesCount = count($palettes); 
-
+@php
       $categoryIcons = [
     'Casa'       => 'bi-house-door',
     'Spesa'      => 'bi-cart4',
@@ -383,6 +380,7 @@ $iconMap = [
                   @if($totalProfit > 0)+@endif{{ number_format($totalProfit, 0, ',', '.') }} €
                 </td>
               </tr>
+            </tfoot>
           </table>
         </div>
       </div>
