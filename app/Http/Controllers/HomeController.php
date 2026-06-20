@@ -303,7 +303,7 @@ class HomeController extends Controller
             ->orderByDesc(‘id’)
             ->get()
             ->groupBy(‘category_id’)
-            ->map->first();
+            ->map(function ($items) { return $items->first(); });
 
         foreach ($investmentCategories as $cat) {
             $last = $latestInvestmentsByCategory->get($cat->id);
