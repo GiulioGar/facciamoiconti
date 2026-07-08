@@ -93,6 +93,140 @@ public function store(Request $request)
     return back()->with('success', 'Entrata aggiunta con successo');
 }
 
+public function update(Request $request, $id)
+{
+    $income = Income::where('id', $id)->where('user_id', Auth::id())->firstOrFail();
+
+    $data = $request->validate([
+        'description'       => 'required|string|max:255',
+        'amount'            => 'required|numeric|min:0.01',
+        'date'              => 'required|date',
+        'allocations.*'     => 'nullable|numeric|min:0',
+        'family_id'         => 'required|exists:families,id',
+        'wallet_allocation' => 'required|in:bank,cash,none',
+    ]);
+
+    if (! Auth::user()->belongsToFamily((int) $data['family_id'])) {
+        abort(403, 'Non sei membro di questa famiglia.');
+    }
+
+    DB::transaction(function() use ($income, $data) {
+        $oldAmount = (float) $income->amount;
+
+        $income->update([
+            'description' => $data['description'],
+            'amount'      => $data['amount'],
+            'date'        => $data['date'],
+        ]);
+
+        $income->allocations()->delete();
+        $typeMap = BudgetCategory::pluck('slug', 'id')->toArray();
+        if (!empty($data['allocations'])) {
+            foreach ($data['allocations'] as $categoryId => $value) {
+                if ((float)$value > 0) {
+                    $income->allocations()->create([
+                        'category_id' => $categoryId,
+                        'amount'      => $value,
+                        'type'        => $typeMap[$categoryId] ?? 'category',
+                    ]);
+                }
+            }
+        }
+
+        // Movimento wallet collegato (entrate nuove, create dopo il sistema wallet)
+        $linked = WalletMovement::where('source_type', 'income')
+                      ->where('source_id', $income->id)
+                      ->first();
+
+        // Rettifica adjustment per entrate legacy (create prima del sistema wallet)
+        $correction = WalletMovement::where('source_type', 'adjustment')
+                          ->where('source_id', $income->id)
+                          ->first();
+
+        if ($data['wallet_allocation'] === 'none') {
+            if ($linked)      $linked->delete();
+            if ($correction)  $correction->delete();
+        } elseif ($linked) {
+            // Entrata nuova con movimento collegato: aggiorna importo pieno
+            $linked->update([
+                'account' => $data['wallet_allocation'],
+                'amount'  => (float) $data['amount'],
+                'date'    => $data['date'],
+                'note'    => $data['description'],
+            ]);
+        } else {
+            // Entrata legacy: registra solo il delta come rettifica
+            $delta = (float) $data['amount'] - $oldAmount;
+            if ($correction) {
+                $correction->update([
+                    'account' => $data['wallet_allocation'],
+                    'amount'  => $correction->amount + $delta,
+                    'date'    => $data['date'],
+                    'note'    => 'Rettifica: ' . $data['description'],
+                ]);
+            } elseif (abs($delta) > 0.001) {
+                WalletMovement::create([
+                    'user_id'     => Auth::id(),
+                    'family_id'   => (int) $data['family_id'],
+                    'account'     => $data['wallet_allocation'],
+                    'amount'      => $delta,
+                    'source_type' => 'adjustment',
+                    'source_id'   => $income->id,
+                    'date'        => $data['date'],
+                    'note'        => 'Rettifica: ' . $data['description'],
+                ]);
+            }
+        }
+    });
+
+    return back()->with('success', 'Entrata aggiornata con successo');
+}
+
+public function destroy($id)
+{
+    $income = Income::where('id', $id)->where('user_id', Auth::id())->firstOrFail();
+
+    DB::transaction(function() use ($income) {
+        $linked = WalletMovement::where('source_type', 'income')
+                      ->where('source_id', $income->id)
+                      ->first();
+
+        $correction = WalletMovement::where('source_type', 'adjustment')
+                          ->where('source_id', $income->id)
+                          ->first();
+
+        if ($linked) {
+            // Entrata moderna: elimina il movimento collegato, saldo si aggiusta da solo
+            $linked->delete();
+        } else {
+            // Entrata legacy: l'importo era nel saldo di apertura, occorre una rettifica negativa
+            // original_bulk_amount = income->amount - (eventuale correzione già applicata)
+            $correctionAmount = $correction ? (float) $correction->amount : 0.0;
+            $originalBulkAmount = (float) $income->amount - $correctionAmount;
+            $account = $correction ? $correction->account : 'bank';
+
+            if (abs($originalBulkAmount) > 0.001) {
+                WalletMovement::create([
+                    'user_id'     => Auth::id(),
+                    'family_id'   => $income->family_id,
+                    'account'     => $account,
+                    'amount'      => -$originalBulkAmount,
+                    'source_type' => 'adjustment',
+                    'source_id'   => null,
+                    'date'        => $income->date,
+                    'note'        => 'Rettifica cancellazione: ' . $income->description,
+                ]);
+            }
+        }
+
+        if ($correction) $correction->delete();
+
+        $income->allocations()->delete();
+        $income->delete();
+    });
+
+    return back()->with('success', 'Entrata eliminata con successo');
+}
 
   public function index()
 {
@@ -124,12 +258,17 @@ public function store(Request $request)
                      ->where('family_id', $family->id)
                      ->orderBy('date','desc')
                      ->orderBy('id',   'desc')
-                     ->paginate(20);
+                     ->get();
 
     $categories = BudgetCategory::orderBy('sort_order')->get();
 
+    $walletByIncome = WalletMovement::where('source_type', 'income')
+                        ->whereIn('source_id', $incomes->pluck('id'))
+                        ->get()
+                        ->keyBy('source_id');
+
     return view('incomes.index', compact(
-        'incomes','family','categories'
+        'incomes','family','categories','walletByIncome'
     ));
 }
 }

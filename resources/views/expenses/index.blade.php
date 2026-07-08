@@ -29,9 +29,10 @@
         <tr>
           <th>Spesa</th>
           <th>Importo</th>
-          <th>Mese</th>
+          <th>Data</th>
           <th>Budget</th>
           <th>Note</th>
+          <th class="text-end">Azioni</th>
         </tr>
       </thead>
       <tbody>
@@ -52,9 +53,31 @@
             <tr>
                 <td><i class="bi bi-{{ $iconData['icon'] }} {{ $iconData['color'] }} me-1"></i> {{ $expense->expenseCategory->name }}</td>
                 <td>€ {{ number_format($expense->amount, 0, ',', '.') }}</td>
-                <td>{{ \Carbon\Carbon::parse($expense->date)->locale('it')->isoFormat('MMM YYYY') }}</td>
+                <td>{{ \Carbon\Carbon::parse($expense->date)->locale('it')->isoFormat('DD/MMM/YY') }}</td>
                 <td><span class="badge bg-{{ $badgeColor }}">{{ $expense->budgetCategory->name }}</span></td>
                 <td>{{ $expense->note ?? '–' }}</td>
+                <td class="text-end">
+                  <button class="btn btn-link p-0 me-2 text-primary btn-edit-expense"
+                    title="Modifica"
+                    data-id="{{ $expense->id }}"
+                    data-expense-cat="{{ $expense->expense_category_id }}"
+                    data-budget-cat="{{ $expense->budget_category_id }}"
+                    data-amount="{{ $expense->amount }}"
+                    data-date="{{ \Carbon\Carbon::parse($expense->date)->format('Y-m-d') }}"
+                    data-note="{{ $expense->note }}"
+                    data-wallet="{{ optional($walletByExpense->get($expense->id))->account ?? 'bank' }}"
+                    data-family="{{ $expense->family_id }}"
+                    data-bs-toggle="modal" data-bs-target="#modalEditExpense">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
+                  <form method="POST" action="{{ route('expenses.destroy', $expense->id) }}"
+                        class="d-inline" onsubmit="return confirm('Eliminare questa spesa e tutti i movimenti collegati?')">
+                    @csrf @method('DELETE')
+                    <button type="submit" class="btn btn-link p-0 text-danger" title="Elimina">
+                      <i class="bi bi-trash3-fill"></i>
+                    </button>
+                  </form>
+                </td>
             </tr>
             @empty
             <tr>
@@ -88,7 +111,7 @@
       <div class="card-body py-3 ps-4 pe-3">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <h6 class="mb-0 text-nowrap">€ {{ number_format($expense->amount, 0, ',', '.') }}</h6>
-          <small class="text-muted text-end">{{ \Carbon\Carbon::parse($expense->date)->locale('it')->isoFormat('MMM YYYY') }}</small>
+          <small class="text-muted text-end">{{ \Carbon\Carbon::parse($expense->date)->locale('it')->isoFormat('DD/MMM/YY') }}</small>
         </div>
 
         <p class="mb-1 fw-semibold">
@@ -97,11 +120,29 @@
 
         <div class="row small text-muted">
           <div class="col-6">
-            <strong>Budget</strong><br>
-
+            <span class="badge bg-{{ $badgeColor }}">{{ $expense->budgetCategory->name }}</span>
           </div>
-          <div class="col-6">
-             <span class="badge bg-{{ $badgeColor }}">{{ $expense->budgetCategory->name }}</span>
+          <div class="col-6 text-end">
+            <button class="btn btn-link p-0 me-2 text-primary btn-edit-expense"
+              title="Modifica"
+              data-id="{{ $expense->id }}"
+              data-expense-cat="{{ $expense->expense_category_id }}"
+              data-budget-cat="{{ $expense->budget_category_id }}"
+              data-amount="{{ $expense->amount }}"
+              data-date="{{ \Carbon\Carbon::parse($expense->date)->format('Y-m-d') }}"
+              data-note="{{ $expense->note }}"
+              data-wallet="{{ optional($walletByExpense->get($expense->id))->account ?? 'bank' }}"
+              data-family="{{ $expense->family_id }}"
+              data-bs-toggle="modal" data-bs-target="#modalEditExpense">
+              <i class="bi bi-pencil-square"></i>
+            </button>
+            <form method="POST" action="{{ route('expenses.destroy', $expense->id) }}"
+                  class="d-inline" onsubmit="return confirm('Eliminare questa spesa e tutti i movimenti collegati?')">
+              @csrf @method('DELETE')
+              <button type="submit" class="btn btn-link p-0 text-danger" title="Elimina">
+                <i class="bi bi-trash3-fill"></i>
+              </button>
+            </form>
           </div>
           @if($expense->note)
           <div class="col-12 mt-2">
@@ -235,12 +276,101 @@
     </form>
   </div>
 </div>
+{{-- Modal Modifica Spesa --}}
+<div class="modal fade" id="modalEditExpense" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="POST" id="formEditExpense" action="">
+      @csrf @method('PUT')
+      <input type="hidden" name="family_id" id="edit-exp-family-id">
+
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Modifica Spesa</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Spesa</label>
+            <select name="expense_category_id" id="edit-expense-cat" class="form-select" required>
+              <option value="">Seleziona...</option>
+              @foreach($expCats as $ec)
+                <option value="{{ $ec->id }}">{{ $ec->name }}</option>
+              @endforeach
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Importo (€)</label>
+            <input type="number" step="1" name="amount" id="edit-exp-amount" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Data</label>
+            <input type="date" name="date" id="edit-exp-date" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Budget</label>
+            <select name="budget_category_id" id="edit-budget-cat" class="form-select" required>
+              @foreach($budgetCats as $bc)
+                <option value="{{ $bc->id }}">{{ $bc->name }}</option>
+              @endforeach
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Allocazione saldo</label>
+            <select name="wallet_allocation" id="edit-exp-wallet" class="form-select">
+              <option value="bank">Conto Corrente</option>
+              <option value="cash">Contanti</option>
+              <option value="none">Non allocare</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Note</label>
+            <input type="text" name="note" id="edit-exp-note" class="form-control">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-danger">Salva modifiche</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
 @endsection
 
 @push('scripts')
 <script>
 $(function(){
   console.log("Inizializzazione controlli modale Uscite");
+
+  // === MODAL MODIFICA SPESA ===
+  $(document).on('click', '.btn-edit-expense', function(){
+    var btn = $(this);
+    var id        = btn.data('id');
+    var expCat    = btn.data('expense-cat');
+    var budgetCat = btn.data('budget-cat');
+    var amount    = btn.data('amount');
+    var date      = btn.data('date');
+    var note      = btn.data('note') || '';
+    var wallet    = btn.data('wallet');
+    var familyId  = btn.data('family');
+
+    $('#formEditExpense').attr('action', '/expenses/' + id);
+    $('#edit-exp-family-id').val(familyId);
+    $('#edit-expense-cat').val(expCat);
+    $('#edit-exp-amount').val(amount);
+    $('#edit-exp-date').val(date);
+    $('#edit-budget-cat').val(budgetCat);
+    $('#edit-exp-wallet').val(wallet);
+    $('#edit-exp-note').val(note);
+  });
 
   // Mappature categorie -> budget
   var budgetMap = @json($budgetMap);

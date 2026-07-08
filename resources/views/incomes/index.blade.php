@@ -52,9 +52,10 @@
           <tr>
             <th class="force-show">Entrata</th>
             <th class="force-show">Importo</th>
-            <th class="force-show">Mese</th>
+            <th class="force-show">Data</th>
             <th>Budget</th>
             <th>Note</th>
+            <th class="force-show text-end">Azioni</th>
           </tr>
         </thead>
         <tbody>
@@ -98,22 +99,41 @@
                 </td>
                 <td class="force-show">€ {{ number_format($alloc->amount, 0, ',', '.') }}</td>
                 <td class="force-show">
-                  {{ \Carbon\Carbon::parse($income->date)->locale('it')->isoFormat('MMM YYYY') }}
+                  {{ \Carbon\Carbon::parse($income->date)->locale('it')->isoFormat('DD/MMM/YY') }}
                 </td>
                 <td>
                   <span class="badge bg-{{ $color }}">{{ $budgetName }}</span>
                 </td>
                 <td>—</td>
+                <td class="force-show text-end">
+                  @if($loop->first)
+                  <button type="button" class="btn btn-link p-0 me-2 text-primary btn-edit-income"
+                    title="Modifica"
+                    data-id="{{ $income->id }}"
+                    data-description="{{ $income->description }}"
+                    data-amount="{{ $income->amount }}"
+                    data-date="{{ \Carbon\Carbon::parse($income->date)->format('Y-m-d') }}"
+                    data-wallet="{{ optional($walletByIncome->get($income->id))->account ?? 'bank' }}"
+                    data-allocations="{{ json_encode($income->allocations->pluck('amount','category_id')) }}"
+                    data-family="{{ $income->family_id }}"
+                    data-bs-toggle="modal" data-bs-target="#modalEditIncome">
+                    <i class="bi bi-pencil-square"></i>
+                  </button>
+                  <form method="POST" action="{{ route('incomes.destroy', $income->id) }}"
+                        class="d-inline" onsubmit="return confirm('Eliminare questa entrata e tutti i movimenti collegati?')">
+                    @csrf @method('DELETE')
+                    <button type="submit" class="btn btn-link p-0 text-danger" title="Elimina">
+                      <i class="bi bi-trash3-fill"></i>
+                    </button>
+                  </form>
+                  @endif
+                </td>
               </tr>
             @endforeach
           @endforeach
         </tbody>
       </table>
 
-      {{-- Paginazione desktop --}}
-      <div class="d-flex justify-content-center mt-3">
-        {{ $incomes->links() }}
-      </div>
     </div>
   </div>
 
@@ -156,7 +176,7 @@
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h6 class="mb-0 text-nowrap">€ {{ number_format($alloc->amount, 0, ',', '.') }}</h6>
               <small class="text-muted text-end">
-                {{ \Carbon\Carbon::parse($income->date)->locale('it')->isoFormat('MMM YYYY') }}
+                {{ \Carbon\Carbon::parse($income->date)->locale('it')->isoFormat('DD/MMM/YY') }}
               </small>
             </div>
 
@@ -168,10 +188,30 @@
             @endif
             </p>
 
-            <div class="row small text-muted">
-              <div class="col-12">
-                <span class="badge bg-{{ $color }}">{{ $budgetName }}</span>
+            <div class="d-flex justify-content-between align-items-center mt-2">
+              <span class="badge bg-{{ $color }}">{{ $budgetName }}</span>
+              @if($loop->first)
+              <div>
+                <button class="btn btn-link p-0 me-2 text-primary btn-edit-income"
+                  title="Modifica"
+                  data-id="{{ $income->id }}"
+                  data-description="{{ $income->description }}"
+                  data-amount="{{ $income->amount }}"
+                  data-date="{{ \Carbon\Carbon::parse($income->date)->format('Y-m-d') }}"
+                  data-wallet="{{ optional($walletByIncome->get($income->id))->account ?? 'bank' }}"
+                  data-allocations="{{ json_encode($income->allocations->pluck('amount','category_id')) }}"
+                  data-family="{{ $income->family_id }}">
+                  <i class="bi bi-pencil-square"></i>
+                </button>
+                <form method="POST" action="{{ route('incomes.destroy', $income->id) }}"
+                      class="d-inline" onsubmit="return confirm('Eliminare questa entrata e tutti i movimenti collegati?')">
+                  @csrf @method('DELETE')
+                  <button type="submit" class="btn btn-link p-0 text-danger" title="Elimina">
+                    <i class="bi bi-trash3-fill"></i>
+                  </button>
+                </form>
               </div>
+              @endif
             </div>
           </div>
         </div>
@@ -180,10 +220,6 @@
       <p class="text-center">Nessuna entrata registrata.</p>
     @endforelse
 
-    {{-- Paginazione mobile --}}
-    <div class="d-flex justify-content-center mt-3">
-      {{ $incomes->links() }}
-    </div>
   </div>
 </div>
 
@@ -294,7 +330,80 @@
     </form>
   </div>
 </div>
+
 @endsection
+
+@push('modals')
+<div class="modal fade" id="modalEditIncome" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="POST" id="formEditIncome" action="">
+      @csrf @method('PUT')
+      <input type="hidden" name="family_id" id="edit-family-id">
+
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Modifica Entrata</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Importo (€)</label>
+            <input type="number" step="1" name="amount" id="edit-amount" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Data</label>
+            <input type="date" name="date" id="edit-date" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Descrizione</label>
+            <input type="text" name="description" id="edit-description" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Allocazione saldo</label>
+            <select name="wallet_allocation" id="edit-wallet-allocation" class="form-select">
+              <option value="bank">Conto Corrente</option>
+              <option value="cash">Contanti</option>
+              <option value="none">Non allocare</option>
+            </select>
+          </div>
+
+          <div class="card mb-0">
+            <div class="card-header">Ripartizione Budget</div>
+            <div class="card-body p-4">
+              @foreach($categories as $cat)
+              <div class="mb-3 row">
+                <label class="col-sm-4 col-form-label">{{ $cat->name }}</label>
+                <div class="col-sm-8">
+                  <input type="number" step="1"
+                    name="allocations[{{ $cat->id }}]"
+                    id="edit-budget-{{ $cat->id }}"
+                    class="form-control edit-budget-input"
+                    data-cat-id="{{ $cat->id }}"
+                    value="0" required>
+                </div>
+              </div>
+              @endforeach
+            </div>
+          </div>
+
+          <div id="edit-allocation-alert" class="alert alert-warning mt-2 d-none">
+            Devi suddividere l'intero importo
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="submit" id="save-edit-income-btn" class="btn btn-primary">Salva modifiche</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+@endpush
 
 @push('scripts')
 
@@ -361,6 +470,71 @@ function validateSum() {
     applyDefaultAllocations();
     validateSum();
   });
+
+  // === MODAL MODIFICA ===
+
+  function validateEditSum() {
+    var total = parseFloat($('#edit-amount').val()) || 0;
+    var sum = 0;
+    $('.edit-budget-input').each(function(){ sum += parseFloat($(this).val()) || 0; });
+    var diff = total - sum;
+    if (Math.abs(diff) > 0.009) {
+      $('#edit-allocation-alert').removeClass('d-none').text('Devi ancora suddividere: € ' + diff.toFixed(2));
+      $('#save-edit-income-btn').prop('disabled', true);
+    } else {
+      $('#edit-allocation-alert').addClass('d-none');
+      $('#save-edit-income-btn').prop('disabled', false);
+    }
+  }
+
+  $(document).on('click', '.btn-edit-income', function(){
+    var btn = $(this);
+    var id          = btn.data('id');
+    var description = btn.data('description');
+    var amount      = btn.data('amount');
+    var date        = btn.data('date');
+    var wallet      = btn.data('wallet');
+    var allocations = btn.data('allocations') || {};
+    var familyId    = btn.data('family');
+
+    $('#formEditIncome').attr('action', '/incomes/' + id);
+    $('#edit-family-id').val(familyId);
+    $('#edit-description').val(description);
+    $('#edit-amount').val(amount);
+    $('#edit-date').val(date);
+    $('#edit-wallet-allocation').val(wallet);
+
+    $('.edit-budget-input').each(function(){
+      var catId = $(this).data('cat-id');
+      $(this).val(allocations[catId] !== undefined ? allocations[catId] : 0);
+    });
+
+    validateEditSum();
+  });
+
+  $(document).on('input', '#edit-amount', function() {
+    var newTotal = parseFloat($(this).val()) || 0;
+    var oldSum = 0;
+    $('.edit-budget-input').each(function(){ oldSum += parseFloat($(this).val()) || 0; });
+
+    if (oldSum > 0 && newTotal > 0) {
+      var ratio = newTotal / oldSum;
+      var distributed = 0;
+      var $inputs = $('.edit-budget-input');
+      $inputs.each(function(i) {
+        if (i < $inputs.length - 1) {
+          var scaled = Math.round(parseFloat($(this).val()) * ratio);
+          $(this).val(scaled);
+          distributed += scaled;
+        } else {
+          $(this).val(newTotal - distributed);
+        }
+      });
+    }
+    validateEditSum();
+  });
+
+  $(document).on('input', '.edit-budget-input', validateEditSum);
 });
 
 

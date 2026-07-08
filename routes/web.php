@@ -60,6 +60,8 @@ Route::middleware('auth')->group(function () {
     Route::get('incomes', [IncomeController::class, 'index'])->name('incomes.index');
     Route::get('incomes/create', [IncomeController::class, 'create'])->name('incomes.create');
     Route::post('incomes', [IncomeController::class, 'store'])->name('incomes.store');
+    Route::put('incomes/{income}', [IncomeController::class, 'update'])->name('incomes.update');
+    Route::delete('incomes/{income}', [IncomeController::class, 'destroy'])->name('incomes.destroy');
 
     // Uscite
     Route::resource('expenses', ExpenseController::class)->except(['show']);

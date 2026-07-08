@@ -59,12 +59,18 @@ class ExpenseController extends Controller
             $months->push(now()->subMonths($i)->format('Y-m'));
         }
 
+        $walletByExpense = WalletMovement::where('source_type', 'expense')
+                            ->whereIn('source_id', $expenses->pluck('id'))
+                            ->get()
+                            ->keyBy('source_id');
+
         return view('expenses.index', compact(
             'expenses',
             'family',
             'expCats',
             'budgetCats',
-            'months'
+            'months',
+            'walletByExpense'
         ));
     }
 
@@ -162,5 +168,129 @@ public function store(Request $request)
 
 
 
-    // … eventuali metodi edit, update, destroy …
+    public function update(Request $request, Expense $expense)
+    {
+        if ($expense->user_id !== Auth::id()) abort(403);
+
+        $data = $request->validate([
+            'amount'               => 'required|numeric|min:0.01',
+            'date'                 => 'required|date',
+            'expense_category_id'  => 'required|exists:expense_categories,id',
+            'budget_category_id'   => 'required|exists:budget_categories,id',
+            'note'                 => 'nullable|string',
+            'family_id'            => 'required|exists:families,id',
+            'wallet_allocation'    => 'required|in:bank,cash,none',
+        ]);
+
+        if (! Auth::user()->belongsToFamily((int) $data['family_id'])) {
+            abort(403, 'Non sei membro di questa famiglia.');
+        }
+
+        DB::transaction(function() use ($expense, $data) {
+            $oldAmount = (float) $expense->amount;
+            $expCat = ExpenseCategory::findOrFail($data['expense_category_id']);
+
+            $expense->update([
+                'description'         => $expCat->name,
+                'amount'              => $data['amount'],
+                'date'                => Carbon::parse($data['date'])->toDateString(),
+                'expense_category_id' => $data['expense_category_id'],
+                'budget_category_id'  => $data['budget_category_id'],
+                'note'                => $data['note'] ?? null,
+            ]);
+
+            // Movimento wallet collegato (spese nuove, create dopo il sistema wallet)
+            $linked = WalletMovement::where('source_type', 'expense')
+                          ->where('source_id', $expense->id)
+                          ->first();
+
+            // Rettifica adjustment per spese legacy (create prima del sistema wallet)
+            $correction = WalletMovement::where('source_type', 'adjustment')
+                              ->where('source_id', $expense->id)
+                              ->first();
+
+            if ($data['wallet_allocation'] === 'none') {
+                if ($linked)     $linked->delete();
+                if ($correction) $correction->delete();
+            } elseif ($linked) {
+                // Spesa moderna con movimento collegato: aggiorna importo pieno
+                $linked->update([
+                    'account' => $data['wallet_allocation'],
+                    'amount'  => -(float) $data['amount'],
+                    'date'    => Carbon::parse($data['date'])->toDateString(),
+                    'note'    => $expCat->name,
+                ]);
+            } else {
+                // Spesa legacy: registra solo il delta come rettifica
+                // delta positivo = spesa diminuita = saldo aumenta
+                $delta = $oldAmount - (float) $data['amount'];
+                if ($correction) {
+                    $correction->update([
+                        'account' => $data['wallet_allocation'],
+                        'amount'  => $correction->amount + $delta,
+                        'date'    => Carbon::parse($data['date'])->toDateString(),
+                        'note'    => 'Rettifica: ' . $expCat->name,
+                    ]);
+                } elseif (abs($delta) > 0.001) {
+                    WalletMovement::create([
+                        'user_id'     => Auth::id(),
+                        'family_id'   => (int) $data['family_id'],
+                        'account'     => $data['wallet_allocation'],
+                        'amount'      => $delta,
+                        'source_type' => 'adjustment',
+                        'source_id'   => $expense->id,
+                        'date'        => Carbon::parse($data['date'])->toDateString(),
+                        'note'        => 'Rettifica: ' . $expCat->name,
+                    ]);
+                }
+            }
+        });
+
+        return back()->with('success', 'Spesa aggiornata con successo');
+    }
+
+    public function destroy(Expense $expense)
+    {
+        if ($expense->user_id !== Auth::id()) abort(403);
+
+        DB::transaction(function() use ($expense) {
+            $linked = WalletMovement::where('source_type', 'expense')
+                          ->where('source_id', $expense->id)
+                          ->first();
+
+            $correction = WalletMovement::where('source_type', 'adjustment')
+                              ->where('source_id', $expense->id)
+                              ->first();
+
+            if ($linked) {
+                // Spesa moderna: elimina il movimento collegato, saldo si aggiusta da solo
+                $linked->delete();
+            } else {
+                // Spesa legacy: crea rettifica positiva per compensare il saldo di apertura
+                // original_bulk_expense = amount + correction (perché delta spesa = old - new)
+                $correctionAmount = $correction ? (float) $correction->amount : 0.0;
+                $originalBulkExpense = (float) $expense->amount + $correctionAmount;
+                $account = $correction ? $correction->account : 'bank';
+
+                if (abs($originalBulkExpense) > 0.001) {
+                    WalletMovement::create([
+                        'user_id'     => Auth::id(),
+                        'family_id'   => $expense->family_id,
+                        'account'     => $account,
+                        'amount'      => $originalBulkExpense, // positivo = compensazione spesa rimossa
+                        'source_type' => 'adjustment',
+                        'source_id'   => null,
+                        'date'        => $expense->date,
+                        'note'        => 'Rettifica cancellazione: ' . $expense->description,
+                    ]);
+                }
+            }
+
+            if ($correction) $correction->delete();
+
+            $expense->delete();
+        });
+
+        return back()->with('success', 'Spesa eliminata con successo');
+    }
 }
