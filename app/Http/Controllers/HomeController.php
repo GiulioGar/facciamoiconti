@@ -180,6 +180,22 @@ class HomeController extends Controller
                       + $latestBalance->other_accounts
                       + $latestBalance->cash;
 
+        // Ultimo aggiornamento wallet per membro della famiglia
+        $memberLastUpdates = collect();
+        if ($family) {
+            $allMembers = $family->members()->wherePivot('status', 'accepted')->get()
+                            ->prepend($family->owner)->unique('id');
+            $memberLastUpdates = $allMembers->map(function($member) use ($familyId) {
+                $lastCreatedAt = WalletMovement::where('user_id', $member->id)
+                    ->where('family_id', $familyId)
+                    ->max('created_at');
+                return [
+                    'nickname' => $member->nickname ?: $member->name,
+                    'date'     => $lastCreatedAt ? Carbon::parse($lastCreatedAt)->locale('it')->isoFormat('D MMMM YYYY') : null,
+                ];
+            });
+        }
+
         // 7) Carica categorie per budget mensile
         $categories = BudgetCategory::orderBy('sort_order')->get();
 
@@ -342,6 +358,7 @@ class HomeController extends Controller
             'latestBalance'      => $latestBalance,
             'latestTotal'        => $latestTotal,
             'latestLiquid'       => $latestLiquid,
+            'memberLastUpdates'  => $memberLastUpdates,
             'categories'         => $categories,
             'incomeByCategory'   => $incomeByCategory ?? [],
             'expenseByCategory'  => $expenseByCategory ?? [],

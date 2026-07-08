@@ -82,6 +82,30 @@
       </div>
     </div>
 
+    @if($memberLastUpdates->isNotEmpty())
+    @php
+    $memberPalette = [
+        ['bg' => '#f0f1ff', 'border' => '#d0d2ff', 'icon' => '#696cff'],
+        ['bg' => '#e8f7ef', 'border' => '#b6dfc8', 'icon' => '#28a745'],
+        ['bg' => '#fff3e0', 'border' => '#ffd0a0', 'icon' => '#fd7e14'],
+        ['bg' => '#fce4ec', 'border' => '#f8bbd0', 'icon' => '#e91e63'],
+    ];
+    @endphp
+    <div class="d-flex flex-wrap justify-content-center gap-2 mt-3 pt-3 border-top">
+      @foreach($memberLastUpdates as $m)
+        @if($m['date'])
+        @php $pal = $memberPalette[$loop->index % count($memberPalette)]; @endphp
+        <span class="badge rounded-pill border d-flex align-items-center gap-1 px-3 py-2"
+              style="background:{{ $pal['bg'] }}; border-color:{{ $pal['border'] }} !important; font-size:0.72rem; font-weight:500;">
+          <i class="bi bi-clock-history" style="font-size:0.8rem; color:{{ $pal['icon'] }};"></i>
+          <span class="text-secondary">{{ $m['nickname'] }}:</span>
+          <strong class="text-dark">{{ $m['date'] }}</strong>
+        </span>
+        @endif
+      @endforeach
+    </div>
+    @endif
+
   </div>
 </div>
 
