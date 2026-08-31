@@ -55,6 +55,8 @@
         <span class="badge bg-primary budget-pill">Crediti: {{ $team['budget'] }}</span>
         <span class="badge bg-danger budget-pill">Spesi: {{ $team['spent'] }}</span>
         <span class="badge bg-success budget-pill">Rimanenti: {{ $team['remaining'] }}</span>
+        <span class="badge bg-warning text-dark budget-pill">Fondo completamento: {{ $team['completion_floor'] }}</span>
+        <span class="badge bg-info text-dark budget-pill">Budget distribuibile: {{ $team['strategic_budget'] }}</span>
       </div>
     </div>
     <div class="card-body border-top">
@@ -182,6 +184,9 @@
         <div class="mb-3">
           <label for="modal-costo" class="form-label">Crediti pagati</label>
           <input type="number" min="0" step="1" class="form-control" id="modal-costo" name="costo" required>
+          <div class="form-text text-info d-none" id="modal-cover-hint">
+            Questa squadra è già presente: il portiere sarà una copertura e il costo sarà 0.
+          </div>
         </div>
       </div>
 
@@ -202,6 +207,7 @@
   const select = document.getElementById('modal-player');
   const extId = document.getElementById('modal-external-id');
   const costo = document.getElementById('modal-costo');
+  const coverHint = document.getElementById('modal-cover-hint');
   const submit = document.getElementById('modal-submit');
   const search = document.getElementById('modal-search');
 
@@ -209,6 +215,8 @@
     select.innerHTML = '<option value="" selected>Seleziona...</option>';
     extId.value = '';
     costo.value = '';
+    costo.readOnly = false;
+    coverHint.classList.add('d-none');
     search.value = '';
     submit.disabled = true;
   }
@@ -239,7 +247,7 @@
         }
 
         const opts = ['<option value="">Seleziona...</option>']
-          .concat(list.map(p => `<option value="${p.value}">${p.text}</option>`));
+          .concat(list.map(p => `<option value="${p.value}" data-cover="${p.is_cover ? '1' : '0'}">${p.text}</option>`));
         select.innerHTML = opts.join('');
       })
       .catch(() => {
@@ -269,6 +277,11 @@
 
   select.addEventListener('change', function() {
     extId.value = this.value || '';
+    const selected = this.options[this.selectedIndex];
+    const isCover = selected && selected.dataset.cover === '1';
+    costo.readOnly = isCover;
+    costo.value = isCover ? '0' : '';
+    coverHint.classList.toggle('d-none', !isCover);
     submit.disabled = !(extId.value && costo.value !== '' && Number(costo.value) >= 0);
   });
 

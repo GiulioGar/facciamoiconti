@@ -8,6 +8,7 @@ use App\Models\FantaQuotazione;
 use App\Models\FantaListone;
 use App\Models\FantaRosa;
 use App\Models\FantaBudgetState;
+use App\Services\Fantacalcio\RosaBudgetCalculator;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -23,6 +24,13 @@ class FantacalcioController extends Controller
         }
 
         return 2500;
+    }
+
+    private function normalizeRosaTeam($team): string
+    {
+        $team = preg_replace('/\s+/u', ' ', trim((string) $team));
+
+        return mb_strtoupper($team, 'UTF-8');
     }
 
     public function index()
@@ -383,9 +391,6 @@ public function rosa()
         ['index'=>27, 'role_token'=>'A', 'title'=>'Slot 6: Attaccante',       'level'=>'Low',   'hint'=>'Ultimo slot offensivo low-cost.', 'base_perc'=>0.001],
     ]);
 
-    $spentTotal     = FantaRosa::sum('costo');
-    $remainingTotal = max(0, $teamBudget - $spentTotal);
-
     $assignedRows = FantaRosa::orderBy('slot_index')->get([
         'slot_index', 'external_id', 'nome', 'squadra', 'costo', 'ruolo_esteso', 'classic_role'
     ]);
@@ -401,29 +406,17 @@ public function rosa()
         ];
     }
 
-    $sumOpen = 0.0;
-    foreach ($slots as $s) {
-        if (!isset($assignedByIndex[$s['index']])) {
-            $sumOpen += (float) $s['base_perc'];
-        }
-    }
-    $sumOpen = $sumOpen > 0 ? $sumOpen : 1.0;
-
-    foreach ($slots as &$s) {
-        if (!isset($assignedByIndex[$s['index']])) {
-            $ratio = (float) $s['base_perc'] / $sumOpen;
-            $s['suggested'] = (int) round($remainingTotal * $ratio);
-        } else {
-            $s['suggested'] = 0;
-        }
-    }
-    unset($s);
+    $budgetResult = app(RosaBudgetCalculator::class)
+        ->calculate($teamBudget, $slots, $assignedByIndex);
+    $slots = $budgetResult['slots'];
 
     $team = [
         'name'      => $teamName,
         'budget'    => $teamBudget,
-        'spent'     => $spentTotal,
-        'remaining' => $remainingTotal,
+        'spent'     => $budgetResult['spent'],
+        'remaining' => $budgetResult['remaining'],
+        'completion_floor' => $budgetResult['completion_floor'],
+        'strategic_budget' => $budgetResult['strategic_budget'],
     ];
 
     return view('fantacalcio.rosa', compact('team', 'slots', 'assignedByIndex'));
@@ -448,6 +441,19 @@ public function rosaPlayers(Request $request)
     $players = FantaListone::query()
         ->where('stato', 0);
 
+    $goalkeeperTeams = [];
+    if ($roleToken === 'P') {
+        $goalkeeperTeams = FantaRosa::query()
+            ->where('classic_role', 'P')
+            ->pluck('squadra')
+            ->map(function ($team) {
+                return $this->normalizeRosaTeam($team);
+            })
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     if ($roleToken !== '') {
         $players->where('ruolo', $roleToken);
     }
@@ -470,10 +476,12 @@ public function rosaPlayers(Request $request)
         ->limit(200)
         ->get();
 
-    $data = $players->map(function ($p) {
+    $data = $players->map(function ($p) use ($roleToken, $goalkeeperTeams) {
         return [
             'value' => $p->external_id,
             'text' => "{$p->nome} ({$p->squadra}) - {$p->ruolo} - Score " . number_format($p->score_calc, 1),
+            'is_cover' => $roleToken === 'P'
+                && in_array($this->normalizeRosaTeam($p->squadra), $goalkeeperTeams, true),
         ];
     });
 
@@ -495,14 +503,6 @@ public function rosaAdd(Request $request)
         return back()->withErrors($v)->with('error', 'Dati non validi.');
     }
 
-    $teamBudget = $this->getRosaBudget();
-    $spentTotal = FantaRosa::sum('costo');
-    $remaining  = $teamBudget - $spentTotal;
-
-    if ((int) $request->costo > $remaining) {
-        return back()->with('error', 'Acquisto non consentito: crediti insufficienti.');
-    }
-
     $player = FantaListone::where('external_id', $request->external_id)
         ->where('stato', 0)
         ->firstOrFail();
@@ -511,12 +511,35 @@ public function rosaAdd(Request $request)
         return back()->with('error', 'Il giocatore non Ã¨ compatibile con il ruolo dello slot.');
     }
 
+    $cost = (int) $request->costo;
+    if ($request->role_token === 'P') {
+        $teamKey = $this->normalizeRosaTeam($player->squadra);
+        $hasTeamGoalkeeper = FantaRosa::query()
+            ->where('classic_role', 'P')
+            ->get(['squadra'])
+            ->contains(function ($rosaPlayer) use ($teamKey) {
+                return $this->normalizeRosaTeam($rosaPlayer->squadra) === $teamKey;
+            });
+
+        if ($hasTeamGoalkeeper) {
+            $cost = 0;
+        }
+    }
+
+    $teamBudget = $this->getRosaBudget();
+    $spentTotal = FantaRosa::sum('costo');
+    $remaining  = $teamBudget - $spentTotal;
+
+    if ($cost > $remaining) {
+        return back()->with('error', 'Acquisto non consentito: crediti insufficienti.');
+    }
+
     FantaRosa::create([
         'external_id'  => $player->external_id,
         'ruolo_esteso' => $player->ruolo_esteso,
         'nome'         => $player->nome,
         'squadra'      => $player->squadra,
-        'costo'        => (int) $request->costo,
+        'costo'        => $cost,
         'classic_role' => $request->role_token,
         'slot_index'   => (int) $request->slot_index,
     ]);
