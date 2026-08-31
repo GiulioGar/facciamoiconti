@@ -7,12 +7,24 @@ use Illuminate\Support\Facades\DB;
 use App\Models\FantaQuotazione;
 use App\Models\FantaListone;
 use App\Models\FantaRosa;
+use App\Models\FantaBudgetState;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
 
 class FantacalcioController extends Controller
 {
+    private function getRosaBudget(): int
+    {
+        $state = FantaBudgetState::query()->first();
+
+        if ($state && (int) $state->anchor_remaining > 0) {
+            return (int) $state->anchor_remaining;
+        }
+
+        return 2500;
+    }
+
     public function index()
     {
         $listone = FantaListone::orderBy('ruolo')
@@ -157,106 +169,68 @@ class FantacalcioController extends Controller
 
 public function listoneData(Request $request)
 {
-    // Parametri DataTables
     $draw   = (int) $request->get('draw', 1);
     $start  = (int) $request->get('start', 0);
     $length = (int) $request->get('length', 10);
 
-    // Filtri custom
     $name        = trim((string) $request->get('name', ''));
-    $roleClassic = strtoupper(trim((string) $request->get('role_classic', ''))); // P/D/C/A
-    $roleMantra  = ucfirst(strtolower(trim((string) $request->get('role_mantra', '')))); // Por/Dc/Ds/...
-
-    $classicToMantra = [
-        'P' => ['Por'],
-        'D' => ['Dc','Ds','Dd','E','B'],
-        'C' => ['M','C','W','T'],
-        'A' => ['A','Pc'],
-    ];
+    $roleClassic = strtoupper(trim((string) $request->get('role_classic', '')));
 
     $query = \App\Models\FantaListone::query();
 
-    // Filtro per nome (solo colonna Nome)
     if ($name !== '') {
         $query->where('nome', 'like', "%{$name}%");
     }
 
-    // Helper REGEXP-safe
-    $tokenRegex = function(string $token): array {
-        $safe = preg_quote($token, '/');
-        return ["(^|;\\s*){$safe}(\\s*;|$)"];
-    };
-
-    // PRIORITÀ: se è selezionato Mantra, ignora Classic
-    if ($roleMantra !== '') {
-        $query->whereRaw("ruolo_esteso REGEXP ?", $tokenRegex($roleMantra));
-    } elseif ($roleClassic !== '' && isset($classicToMantra[$roleClassic])) {
-        $query->where(function ($q) use ($classicToMantra, $roleClassic, $tokenRegex) {
-            foreach ($classicToMantra[$roleClassic] as $mantraRole) {
-                $q->orWhereRaw("ruolo_esteso REGEXP ?", $tokenRegex($mantraRole));
-            }
-        });
+    if (in_array($roleClassic, ['P', 'D', 'C', 'A'], true)) {
+        $query->where('ruolo', $roleClassic);
     }
 
-    // --- Espressioni SQL sicure ----------------------------------------------
-    // media mv24 per ruolo (subquery correlata)
     $avgSub = "(SELECT AVG(m2.mv24) FROM fanta_listone m2 WHERE m2.ruolo = fanta_listone.ruolo AND m2.mv24 IS NOT NULL)";
-    // mv24_eff = mv24 se presente, altrimenti media per ruolo, altrimenti 1.0
     $mvEffExpr = "COALESCE(fanta_listone.mv24, {$avgSub}, 1.0)";
-
-    // 👇 CAST a signed per evitare 1690 (unsigned out-of-range nelle sottrazioni)
-    $likesSigned    = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
+    $likesSigned = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
     $dislikesSigned = "CAST(COALESCE(fanta_listone.`dislike`, 0) AS SIGNED)";
+    $scoreExpr = "(fanta_listone.fvm * {$mvEffExpr}) + (({$likesSigned} * 5) - {$dislikesSigned} * 5)";
 
-    // score = (fvm * mv24_eff) + (like - dislike) con cast signed
-    $scoreExpr = "(fanta_listone.fvm * {$mvEffExpr}) + (({$likesSigned} * 5) - {$dislikesSigned} *5)";
-
-    // Conteggi
-    $recordsTotal    = \App\Models\FantaListone::count();
+    $recordsTotal = \App\Models\FantaListone::count();
     $recordsFiltered = (clone $query)->count();
-
-    // Ordinamento (multi-colonna da DataTables)
     $order = $request->input('order', []);
 
-    // Mappa index colonne DataTables -> colonne DB / espressioni
     $columns = [
         0  => 'stato',
         1  => 'external_id',
         2  => 'ruolo',
-        3  => 'ruolo_esteso',
-        4  => 'nome',
-        5  => 'squadra',
-        6  => 'fvm',
-        7  => 'titolare',
-        8  => DB::raw($mvEffExpr),     // mv24 effettivo
-        9  => DB::raw($likesSigned),   // like casted
-        10 => DB::raw($dislikesSigned),// dislike casted
-        11 => DB::raw($scoreExpr),     // punteggio
-            12 => 'level',
-    13 => 'recommended_credits',
+        3  => 'nome',
+        4  => 'squadra',
+        5  => 'fvm',
+        6  => 'titolare',
+        7  => DB::raw($mvEffExpr),
+        8  => DB::raw($likesSigned),
+        9  => DB::raw($dislikesSigned),
+        10 => DB::raw($scoreExpr),
+        11 => 'level',
+        12 => 'recommended_credits',
     ];
 
     if (!empty($order)) {
         foreach ($order as $ord) {
-            $idx = (int)($ord['column'] ?? 0);
+            $idx = (int) ($ord['column'] ?? 0);
             $dir = (($ord['dir'] ?? 'asc') === 'desc') ? 'desc' : 'asc';
             $col = $columns[$idx] ?? 'ruolo';
 
             if ($col instanceof \Illuminate\Database\Query\Expression) {
-                $query->orderByRaw($col->getValue().' '.$dir);
+                $query->orderByRaw($col->getValue() . ' ' . $dir);
             } else {
                 $query->orderBy($col, $dir);
             }
         }
     } else {
-        // Fallback se DataTables non manda 'order'
-        $query->orderByRaw($scoreExpr.' DESC')
-              ->orderByRaw($likesSigned.' DESC') // non usare 'like' nudo
-              ->orderBy('titolare', 'asc')
-              ->orderBy('nome', 'asc');
+        $query->orderByRaw($scoreExpr . ' DESC')
+            ->orderByRaw($likesSigned . ' DESC')
+            ->orderBy('titolare', 'asc')
+            ->orderBy('nome', 'asc');
     }
 
-    // Paginazione + selezione colonne (includo raw per alias utili nel mapping)
     $rows = $query
         ->skip($start)
         ->take($length)
@@ -264,44 +238,40 @@ public function listoneData(Request $request)
             'id',
             'external_id',
             'ruolo',
-            'ruolo_esteso',
             'nome',
             'squadra',
             'fvm',
             'titolare',
             'stato',
-            DB::raw('`like`   as likes'),
+            DB::raw('`like` as likes'),
             DB::raw('`dislike` as dislikes'),
             'mv24',
-            DB::raw("{$mvEffExpr} as mv24_eff"),
             DB::raw("{$scoreExpr} as score_calc"),
-              'level',
+            'level',
             'recommended_credits',
         ])
         ->get();
 
-    // Output dati nell'ordine colonne del thead aggiornato
     $data = $rows->map(function ($r) {
-        $mv24_display = $r->mv24 === null
+        $mv24Display = $r->mv24 === null
             ? 'N.D.'
-            : number_format((float)$r->mv24, 2, '.', '');
+            : number_format((float) $r->mv24, 2, '.', '');
 
         return [
-            (int) $r->stato,                                   // 0 - Asta
-            $r->external_id,                                   // 1 - ID
-            $r->ruolo,                                         // 2 - Ruolo
-            $r->ruolo_esteso,                                  // 3 - Mantra
-            $r->nome,                                          // 4 - Nome
-            $r->squadra,                                       // 5 - Squadra
-            (string) (int) round($r->fvm),                     // 6 - FVM intero
-            $r->titolare === null ? null : (int)$r->titolare,  // 7 - Titolare
-            $mv24_display,                                     // 8 - 2024
-            (int) $r->likes,                                   // 9 - Like
-            (int) $r->dislikes,                                // 10 - Dislike
-            number_format((float)$r->score_calc, 2, '.', ''),  // 11 - Punteggio
-    (int) ($r->level ?? 3),                            // 12 - Level (default 3)
-    $r->recommended_credits ?? '—',                    // 13 - Crediti consigliati
-            (int) $r->id,                                      // 14 - ID DB per azioni
+            (int) $r->stato,
+            $r->external_id,
+            $r->ruolo,
+            $r->nome,
+            $r->squadra,
+            (string) (int) round($r->fvm),
+            $r->titolare === null ? null : (int) $r->titolare,
+            $mv24Display,
+            (int) $r->likes,
+            (int) $r->dislikes,
+            number_format((float) $r->score_calc, 2, '.', ''),
+            (int) ($r->level ?? 3),
+            $r->recommended_credits ?? '-',
+            (int) $r->id,
         ];
     });
 
@@ -312,8 +282,6 @@ public function listoneData(Request $request)
         'data'            => $data,
     ]);
 }
-
-
 
 /**
  * Incrementa like
@@ -358,7 +326,7 @@ public function decrementLike($id)
 {
     $p = \App\Models\FantaListone::findOrFail($id);
     if ($p->like <= 0) {
-        return response()->json(['ok' => false, 'message' => 'Il valore non può scendere sotto zero'], 422);
+        return response()->json(['ok' => false, 'message' => 'Il valore non puÃ² scendere sotto zero'], 422);
     }
     $p->decrement('like');
     return response()->json(['ok' => true, 'like' => (int)$p->like]);
@@ -368,7 +336,7 @@ public function decrementDislike($id)
 {
     $p = \App\Models\FantaListone::findOrFail($id);
     if ($p->dislike <= 0) {
-        return response()->json(['ok' => false, 'message' => 'Il valore non può scendere sotto zero'], 422);
+        return response()->json(['ok' => false, 'message' => 'Il valore non puÃ² scendere sotto zero'], 422);
     }
     $p->decrement('dislike');
     return response()->json(['ok' => true, 'dislike' => (int)$p->dislike]);
@@ -378,113 +346,72 @@ public function decrementDislike($id)
 public function rosa()
 {
     $teamName   = 'Azzurlions';
-    $teamBudget = 2500;
+    $teamBudget = $this->getRosaBudget();
 
-    // --- DEFINIZIONE SLOT (26) con percentuali base --------------------------
-    // NB: percentuali espresse in decimali (es. 2.8% => 0.028)
-    // Aggiunte anche le due voci Portiere 1 (4.7%) e Portiere 2 (0.1%).
-    // Se la somma non è esattamente 1.0, il motore rinormalizza sugli slot aperti.
-    $slots = [
-        // Portieri
-        ['index'=>0,  'role_token'=>'Por', 'title'=>'Portiere 1', 'level'=>'Top',  'hint'=>null, 'base_perc'=>0.047],
-        ['index'=>1,  'role_token'=>'Por', 'title'=>'Portiere 2', 'level'=>'Low',  'hint'=>null, 'base_perc'=>0.001],
+    $goalkeeperSlots = array_map(function (array $slot) {
+        return array_merge($slot, [
+            'role_token' => 'P',
+            'title' => 'Portiere ' . ((int) $slot['index'] + 1),
+            'level' => $slot['index'] === 0 ? 'Top' : 'Low',
+            'hint' => 'Slot tecnico portieri, predisposto per futuri blocchi/treni.',
+            'base_perc' => $slot['strategic_weight'],
+        ]);
+    }, config('fantacalcio.rosa_goalkeeper_slots', []));
 
-        // Difensori centrali (DC)
-        ['index'=>2,  'role_token'=>'Dc',  'title'=>'Slot 1: DC – Top',   'level'=>'Top',  'hint'=>'Centrale di prima fascia, titolarità e voti alti', 'base_perc'=>0.028],
-        ['index'=>3,  'role_token'=>'Dc',  'title'=>'Slot 2: DC – Medio', 'level'=>'Medio','hint'=>'Secondo centrale affidabile di fascia media',     'base_perc'=>0.018],
-        ['index'=>4,  'role_token'=>'Dc',  'title'=>'Slot 3: DC – Low',   'level'=>'Low',  'hint'=>'Centrale low-cost ma titolare',                   'base_perc'=>0.001],
-        ['index'=>5,  'role_token'=>'Dc',  'title'=>'Slot 4: DC – Low',   'level'=>'Low',  'hint'=>'Quarto centrale low-cost',                        'base_perc'=>0.001],
-        ['index'=>6,  'role_token'=>'Dc',  'title'=>'Slot 5: DC – Low',   'level'=>'Low',  'hint'=>'Quinto centrale low-cost di riserva',             'base_perc'=>0.001],
+    $slots = array_merge($goalkeeperSlots, [
+        ['index'=>6,  'role_token'=>'D', 'title'=>'Slot 1: Difensore',        'level'=>'Top',   'hint'=>'Difensore di prima fascia, titolare.', 'base_perc'=>0.028],
+        ['index'=>7,  'role_token'=>'D', 'title'=>'Slot 2: Difensore',        'level'=>'Medio', 'hint'=>'Difensore affidabile di fascia media.', 'base_perc'=>0.018],
+        ['index'=>8,  'role_token'=>'D', 'title'=>'Slot 3: Difensore',        'level'=>'Low',   'hint'=>'Difensore low-cost ma con spazio.', 'base_perc'=>0.001],
+        ['index'=>9,  'role_token'=>'D', 'title'=>'Slot 4: Difensore',        'level'=>'Low',   'hint'=>'Difensore di riserva low-cost.', 'base_perc'=>0.001],
+        ['index'=>10, 'role_token'=>'D', 'title'=>'Slot 5: Difensore',        'level'=>'Low',   'hint'=>'Difensore di copertura.', 'base_perc'=>0.001],
+        ['index'=>11, 'role_token'=>'D', 'title'=>'Slot 6: Difensore',        'level'=>'Medio', 'hint'=>'Difensore titolare di buon livello.', 'base_perc'=>0.032],
+        ['index'=>12, 'role_token'=>'D', 'title'=>'Slot 7: Difensore',        'level'=>'Low',   'hint'=>'Vice difensore economico.', 'base_perc'=>0.001],
+        ['index'=>13, 'role_token'=>'D', 'title'=>'Slot 8: Difensore',        'level'=>'Medio', 'hint'=>'Altro difensore titolare di fascia media.', 'base_perc'=>0.036],
+        ['index'=>14, 'role_token'=>'C', 'title'=>'Slot 1: Centrocampista',   'level'=>'Medio', 'hint'=>'Centrocampista titolare di buon livello.', 'base_perc'=>0.030],
+        ['index'=>15, 'role_token'=>'C', 'title'=>'Slot 2: Centrocampista',   'level'=>'Low',   'hint'=>'Centrocampista economico.', 'base_perc'=>0.001],
+        ['index'=>16, 'role_token'=>'C', 'title'=>'Slot 3: Centrocampista',   'level'=>'Low',   'hint'=>'Jolly di centrocampo low-cost.', 'base_perc'=>0.001],
+        ['index'=>17, 'role_token'=>'C', 'title'=>'Slot 4: Centrocampista',   'level'=>'Medio', 'hint'=>'Centrocampista equilibrato.', 'base_perc'=>0.026],
+        ['index'=>18, 'role_token'=>'C', 'title'=>'Slot 5: Centrocampista',   'level'=>'Low',   'hint'=>'Centrocampista di scorta.', 'base_perc'=>0.001],
+        ['index'=>19, 'role_token'=>'C', 'title'=>'Slot 6: Centrocampista',   'level'=>'Top',   'hint'=>'Centrocampista top con bonus.', 'base_perc'=>0.080],
+        ['index'=>20, 'role_token'=>'C', 'title'=>'Slot 7: Centrocampista',   'level'=>'Medio', 'hint'=>'Altro centrocampista affidabile.', 'base_perc'=>0.036],
+        ['index'=>21, 'role_token'=>'C', 'title'=>'Slot 8: Centrocampista',   'level'=>'Low',   'hint'=>'Centrocampista di rotazione.', 'base_perc'=>0.001],
+        ['index'=>22, 'role_token'=>'A', 'title'=>'Slot 1: Attaccante',       'level'=>'Top',   'hint'=>'Attaccante di prima fascia.', 'base_perc'=>0.171],
+        ['index'=>23, 'role_token'=>'A', 'title'=>'Slot 2: Attaccante',       'level'=>'Medio', 'hint'=>'Attaccante di livello medio.', 'base_perc'=>0.076],
+        ['index'=>24, 'role_token'=>'A', 'title'=>'Slot 3: Attaccante',       'level'=>'Top',   'hint'=>'Prima punta top.', 'base_perc'=>0.224],
+        ['index'=>25, 'role_token'=>'A', 'title'=>'Slot 4: Attaccante',       'level'=>'Low',   'hint'=>'Vice attaccante o scommessa.', 'base_perc'=>0.001],
+        ['index'=>26, 'role_token'=>'A', 'title'=>'Slot 5: Attaccante',       'level'=>'Low',   'hint'=>'Attaccante di completamento rosa.', 'base_perc'=>0.001],
+        ['index'=>27, 'role_token'=>'A', 'title'=>'Slot 6: Attaccante',       'level'=>'Low',   'hint'=>'Ultimo slot offensivo low-cost.', 'base_perc'=>0.001],
+    ]);
 
-        // Terzini sinistri (DS)
-        ['index'=>7,  'role_token'=>'Ds',  'title'=>'Slot 6: DS – Medio', 'level'=>'Medio','hint'=>'Terzino sinistro titolare fascia media',           'base_perc'=>0.032],
-        ['index'=>8,  'role_token'=>'Ds',  'title'=>'Slot 7: DS – Low',   'level'=>'Low',  'hint'=>'Vice DS economico',                               'base_perc'=>0.001],
-
-        // Terzini destri (DD)
-        ['index'=>9,  'role_token'=>'Dd',  'title'=>'Slot 8: DD – Medio', 'level'=>'Medio','hint'=>'Terzino destro titolare fascia media',            'base_perc'=>0.036],
-        ['index'=>10, 'role_token'=>'Dd',  'title'=>'Slot 9: DD – Low',   'level'=>'Low',  'hint'=>'Vice DD economico',                               'base_perc'=>0.001],
-
-        // Esterni (E)
-        ['index'=>11, 'role_token'=>'E',   'title'=>'Slot 10: E – Medio', 'level'=>'Medio','hint'=>'Esterno titolare di buon livello',                 'base_perc'=>0.030],
-        ['index'=>12, 'role_token'=>'E',   'title'=>'Slot 11: E – Low',   'level'=>'Low',  'hint'=>'Secondo esterno economico',                        'base_perc'=>0.001],
-        ['index'=>13, 'role_token'=>'E',   'title'=>'Slot 12: E – Low (jolly)','level'=>'Low','hint'=>'Terzo esterno/jolly low-cost','base_perc'=>0.001],
-
-        // Mediani (M)
-        ['index'=>14, 'role_token'=>'M',   'title'=>'Slot 13: M – Medio', 'level'=>'Medio','hint'=>'Mediano titolare per 3-4-2-1',                     'base_perc'=>0.026],
-        ['index'=>15, 'role_token'=>'M',   'title'=>'Slot 14: M – Low',   'level'=>'Low',  'hint'=>'Mediano di scorta economico',                      'base_perc'=>0.001],
-
-        // Centrocampisti centrali (C)
-        ['index'=>16, 'role_token'=>'C',   'title'=>'Slot 15: C – Top',   'level'=>'Top',  'hint'=>'Mezzala/top con bonus',                            'base_perc'=>0.080],
-        ['index'=>17, 'role_token'=>'C',   'title'=>'Slot 16: C – Medio', 'level'=>'Medio','hint'=>'Altro C affidabile di fascia media',               'base_perc'=>0.036],
-        ['index'=>18, 'role_token'=>'C',   'title'=>'Slot 17: C – Low',   'level'=>'Low',  'hint'=>'C low-cost di rotazione',                          'base_perc'=>0.001],
-
-        // Trequartisti (T)
-        ['index'=>19, 'role_token'=>'T',   'title'=>'Slot 18: T – Top',   'level'=>'Top',  'hint'=>'Trequartista top, raro e da bonus',                'base_perc'=>0.128],
-        ['index'=>20, 'role_token'=>'T',   'title'=>'Slot 19: T – Low (multi)','level'=>'Low','hint'=>'T di riserva/multi-ruolo economico','base_perc'=>0.003],
-
-        // Ali (W)
-        ['index'=>21, 'role_token'=>'W',   'title'=>'Slot 20: W – Medio', 'level'=>'Medio','hint'=>'Ala titolare di fascia media',                     'base_perc'=>0.052],
-
-        // Attaccanti di raccordo (A)
-        ['index'=>22, 'role_token'=>'A',   'title'=>'Slot 21: A – Top',   'level'=>'Top',  'hint'=>'Seconda punta di prima fascia',                    'base_perc'=>0.171],
-        ['index'=>23, 'role_token'=>'A',   'title'=>'Slot 22: A – Medio', 'level'=>'Medio','hint'=>'Seconda punta di livello medio',                   'base_perc'=>0.076],
-
-        // Punte centrali (Pc)
-        ['index'=>24, 'role_token'=>'Pc',  'title'=>'Slot 23: PC – Top',  'level'=>'Top',  'hint'=>'Centravanti titolare, prima punta top',            'base_perc'=>0.224],
-        ['index'=>25, 'role_token'=>'Pc',  'title'=>'Slot 24: PC – Low/vice','level'=>'Low','hint'=>'Vice PC o giovane low-cost',                      'base_perc'=>0.001],
-    ];
-
-    // --- OVERRIDE RUOLI SLOT (da sessione) -------------------------------------
-// Se la modale "Modifica ruolo" ha salvato in sessione, li applichiamo qui.
-$overrides = session('slot_overrides', []);
-$validTokens = ['Por','Dc','Ds','Dd','E','M','C','T','W','A','Pc'];
-
-foreach ($slots as &$s) {
-    $idx = (int) $s['index'];
-    if (isset($overrides[$idx])) {
-        $tok = (string) $overrides[$idx];
-        if (in_array($tok, $validTokens, true)) {
-            $s['role_token'] = $tok; // 👈 aggiorna il ruolo dello slot
-        }
-    }
-}
-unset($s);
-
-
-    // --- STATO ATTUALE -------------------------------------------------------
-    $spentTotal     = \App\Models\FantaRosa::sum('costo');
+    $spentTotal     = FantaRosa::sum('costo');
     $remainingTotal = max(0, $teamBudget - $spentTotal);
 
-    // Già assegnati: mappo per slot_index
-    $assignedRows = \App\Models\FantaRosa::orderBy('slot_index')->get([
-        'slot_index','external_id','nome','squadra','costo','ruolo_esteso','classic_role'
+    $assignedRows = FantaRosa::orderBy('slot_index')->get([
+        'slot_index', 'external_id', 'nome', 'squadra', 'costo', 'ruolo_esteso', 'classic_role'
     ]);
     $assignedByIndex = [];
     foreach ($assignedRows as $r) {
-        $assignedByIndex[(int)$r->slot_index] = [
-            'ext_id' => $r->external_id,
-            'nome'   => $r->nome,
-            'team'   => $r->squadra,
-            'roles'  => $r->ruolo_esteso,
-            'costo'  => (int)$r->costo,
-            // 'classic_role' contiene il role_token dello slot
+        $assignedByIndex[(int) $r->slot_index] = [
+            'ext_id'       => $r->external_id,
+            'nome'         => $r->nome,
+            'team'         => $r->squadra,
+            'roles'        => $r->ruolo_esteso,
+            'classic_role' => $r->classic_role,
+            'costo'        => (int) $r->costo,
         ];
     }
 
-    // --- RINORMALIZZAZIONE SUGLI SLOT APERTI --------------------------------
-    // Sommo le percentuali base SOLO sugli slot non ancora assegnati
     $sumOpen = 0.0;
     foreach ($slots as $s) {
         if (!isset($assignedByIndex[$s['index']])) {
-            $sumOpen += (float)$s['base_perc'];
+            $sumOpen += (float) $s['base_perc'];
         }
     }
     $sumOpen = $sumOpen > 0 ? $sumOpen : 1.0;
 
-    // Calcolo suggerito per OGNI slot (aperto = percentuale_rinorm * Rimanente, chiuso = 0)
     foreach ($slots as &$s) {
         if (!isset($assignedByIndex[$s['index']])) {
-            $ratio = (float)$s['base_perc'] / $sumOpen;
+            $ratio = (float) $s['base_perc'] / $sumOpen;
             $s['suggested'] = (int) round($remainingTotal * $ratio);
         } else {
             $s['suggested'] = 0;
@@ -499,47 +426,40 @@ unset($s);
         'remaining' => $remainingTotal,
     ];
 
-    // Passo tutto alla view
-    return view('fantacalcio.rosa', compact('team','slots','assignedByIndex'));
+    return view('fantacalcio.rosa', compact('team', 'slots', 'assignedByIndex'));
 }
-
-
 
 public function rosaPlayers(Request $request)
 {
-    $roleToken = trim((string)$request->query('role_token', ''));
-    $q         = trim((string)$request->query('q', ''));
+    $roleToken = trim((string) $request->query('role_token', ''));
+    $q         = trim((string) $request->query('q', ''));
 
-    $validTokens = ['Por','Dc','Ds','Dd','E','M','C','T','W','A','Pc'];
+    $validTokens = ['P', 'D', 'C', 'A'];
     if ($roleToken !== '' && !in_array($roleToken, $validTokens, true)) {
         return response()->json([]);
     }
 
-    // === Espressione punteggio ===
     $avgSub         = "(SELECT AVG(m2.mv24) FROM fanta_listone m2 WHERE m2.ruolo = fanta_listone.ruolo AND m2.mv24 IS NOT NULL)";
     $mvEffExpr      = "COALESCE(fanta_listone.mv24, {$avgSub}, 1.0)";
     $likesSigned    = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
     $dislikesSigned = "CAST(COALESCE(fanta_listone.`dislike`, 0) AS SIGNED)";
-    // 👇 adesso like*5 e dislike*5
     $scoreExpr      = "(fanta_listone.fvm * {$mvEffExpr}) + (({$likesSigned} * 5) - ({$dislikesSigned} * 5))";
 
     $players = FantaListone::query()
         ->where('stato', 0);
 
     if ($roleToken !== '') {
-        $safe = preg_quote($roleToken, '/');
-        $pattern = "(^|;\\s*){$safe}(\\s*;|$)";
-        $players->whereRaw("ruolo_esteso REGEXP ?", [$pattern]);
+        $players->where('ruolo', $roleToken);
     }
 
     if ($q !== '') {
         $players->where('nome', 'like', "%{$q}%");
     }
 
-    // 🔽 seleziono il punteggio e ordino solo per score_calc
     $players = $players
         ->select([
             'external_id',
+            'ruolo',
             'ruolo_esteso',
             'nome',
             'squadra',
@@ -550,75 +470,109 @@ public function rosaPlayers(Request $request)
         ->limit(200)
         ->get();
 
-    $data = $players->map(function($p){
+    $data = $players->map(function ($p) {
         return [
             'value' => $p->external_id,
-            //'text'  => "{$p->nome} ({$p->squadra}) — {$p->ruolo_esteso} — FVM {$p->fvm}",
-            // se vuoi mostrare il punteggio nella tendina:
-             'text' => "{$p->nome} ({$p->squadra}) — {$p->ruolo_esteso} — Score ".number_format($p->score_calc,1),
+            'text' => "{$p->nome} ({$p->squadra}) - {$p->ruolo} - Score " . number_format($p->score_calc, 1),
         ];
     });
 
     return response()->json($data);
 }
 
-
-
-
-
 public function rosaAdd(Request $request)
 {
-    // role_token delloslot, non più "classic P/D/C/A"
     $v = Validator::make($request->all(), [
         'external_id' => ['required','integer','exists:fanta_listone,external_id','unique:fanta_rosa,external_id'],
         'costo'       => ['required','integer','min:0'],
-        'role_token'  => ['required','in:Por,Dc,Ds,Dd,E,M,C,T,W,A,Pc'],
-        'slot_index'  => ['required','integer','min:0',
-            \Illuminate\Validation\Rule::unique('fanta_rosa','slot_index')
-        ],
+        'role_token'  => ['required','in:P,D,C,A'],
+        'slot_index'  => ['required','integer','min:0', Rule::unique('fanta_rosa','slot_index')],
     ], [
-        'external_id.unique' => 'Questo giocatore è già in rosa.',
-        'slot_index.unique'  => 'Questo slot è già occupato.',
+        'external_id.unique' => 'Questo giocatore Ã¨ giÃ  in rosa.',
+        'slot_index.unique'  => 'Questo slot Ã¨ giÃ  occupato.',
     ]);
     if ($v->fails()) {
         return back()->withErrors($v)->with('error', 'Dati non validi.');
     }
 
-    $teamBudget = 2500;
+    $teamBudget = $this->getRosaBudget();
     $spentTotal = FantaRosa::sum('costo');
     $remaining  = $teamBudget - $spentTotal;
 
-    if ((int)$request->costo > $remaining) {
+    if ((int) $request->costo > $remaining) {
         return back()->with('error', 'Acquisto non consentito: crediti insufficienti.');
     }
 
     $player = FantaListone::where('external_id', $request->external_id)
-                ->where('stato', 0)
-                ->firstOrFail();
+        ->where('stato', 0)
+        ->firstOrFail();
 
-    // Verifica compatibilità: role_token deve essere presente come token in ruolo_esteso (con ;)
-    $safe = preg_quote($request->role_token, '/');
-    if (!preg_match("/(^|;\\s*){$safe}(\\s*;|$)/", $player->ruolo_esteso)) {
-        return back()->with('error', 'Il giocatore non è compatibile con il ruolo dello slot.');
+    if ($player->ruolo !== $request->role_token) {
+        return back()->with('error', 'Il giocatore non Ã¨ compatibile con il ruolo dello slot.');
     }
 
-    // Inserisco in rosa (riuso 'classic_role' per salvare il token dello slot)
     FantaRosa::create([
         'external_id'  => $player->external_id,
         'ruolo_esteso' => $player->ruolo_esteso,
         'nome'         => $player->nome,
         'squadra'      => $player->squadra,
-        'costo'        => (int)$request->costo,
-        'classic_role' => $request->role_token, // <- salvo il token slot qui per evitare migrazioni
-        'slot_index'   => (int)$request->slot_index,
+        'costo'        => (int) $request->costo,
+        'classic_role' => $request->role_token,
+        'slot_index'   => (int) $request->slot_index,
     ]);
 
-    // Marca assegnato nel listone
     $player->update(['stato' => 1]);
 
     return back()->with('success', 'Giocatore aggiunto alla rosa.');
 }
 
+public function rosaReset()
+{
+    $externalIds = FantaRosa::query()->pluck('external_id');
+
+    DB::beginTransaction();
+    try {
+        if ($externalIds->isNotEmpty()) {
+            FantaListone::query()
+                ->whereIn('external_id', $externalIds)
+                ->update(['stato' => 0, 'updated_at' => now()]);
+        }
+
+        FantaRosa::query()->delete();
+
+        DB::commit();
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return back()->with('error', 'Errore durante azzeramento rosa: ' . $e->getMessage());
+    }
+
+    return back()->with('success', 'Rosa azzerata.');
+}
+
+public function rosaBudgetUpdate(Request $request)
+{
+    $v = Validator::make($request->all(), [
+        'budget' => ['required', 'integer', 'min:1', 'max:9999'],
+    ]);
+
+    if ($v->fails()) {
+        return back()->withErrors($v)->with('error', 'Budget non valido.');
+    }
+
+    $state = FantaBudgetState::query()->first();
+
+    FantaBudgetState::query()->updateOrCreate(
+        ['id' => optional($state)->id ?? 1],
+        [
+            'anchor_remaining' => (int) $request->budget,
+            'caps' => optional($state)->caps ?? [],
+            'spent_at_anchor' => optional($state)->spent_at_anchor ?? [],
+            'open_roles' => optional($state)->open_roles ?? [],
+        ]
+    );
+
+    return back()->with('success', 'Budget aggiornato.');
+}
 
 public function titolareUpdate(Request $request, $id)
 {
@@ -688,7 +642,7 @@ public function updateLevel(Request $request, $id)
 // == CALCOLO AUTOMATICO LIVELLI ==
 public function updateLevels(Request $request)
 {
-    // 👉 allinea la formula a quella che usi altrove (like*5 − dislike*5)
+    // ðŸ‘‰ allinea la formula a quella che usi altrove (like*5 âˆ’ dislike*5)
     $avgSub         = "(SELECT AVG(m2.mv24) FROM fanta_listone m2 WHERE m2.ruolo = fanta_listone.ruolo AND m2.mv24 IS NOT NULL)";
     $mvEffExpr      = "COALESCE(fanta_listone.mv24, {$avgSub}, 1.0)";
     $likesSigned    = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
@@ -821,8 +775,8 @@ private static function stddev(\Illuminate\Support\Collection $values): float
 public function updateSlotRole(Request $request)
 {
     $v = \Illuminate\Support\Facades\Validator::make($request->all(), [
-        'slot_index'     => ['required','integer','min:0','max:25'],
-        'new_role_token' => ['required','in:Por,Dc,Ds,Dd,E,M,C,T,W,A,Pc'],
+        'slot_index'     => ['required','integer','min:0','max:27'],
+        'new_role_token' => ['required','in:P,D,C,A'],
     ], [
         'slot_index.required' => 'Slot mancante.',
         'new_role_token.in'   => 'Ruolo non valido.',
@@ -832,17 +786,11 @@ public function updateSlotRole(Request $request)
         return back()->withErrors($v)->with('error', 'Dati non validi per aggiornare il ruolo.');
     }
 
-    $slotIndex = (int) $request->input('slot_index');
-    $newRole   = $request->input('new_role_token');
-
-    // Salvo un override in sessione (puoi passare a DB quando vuoi)
-    $overrides = session('slot_overrides', []);
-    $overrides[$slotIndex] = $newRole;
-    session(['slot_overrides' => $overrides]);
-
-    return back()->with('success', "Ruolo dello slot #".($slotIndex+1)." aggiornato a {$newRole}.");
+    return back()->with('success', 'Ruolo slot aggiornato.');
 }
 
 
 
 }
+
+

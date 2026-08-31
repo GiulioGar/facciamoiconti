@@ -113,6 +113,8 @@ Route::prefix('fantacalcio')->as('fantacalcio.')->group(function () {
     Route::get('/rosa', [FantacalcioController::class, 'rosa'])->name('rosa');
     Route::get('/rosa/players', [FantacalcioController::class, 'rosaPlayers'])->name('rosa.players');
     Route::post('/rosa/add',    [FantacalcioController::class, 'rosaAdd'])->name('rosa.add');
+    Route::post('/rosa/reset',  [FantacalcioController::class, 'rosaReset'])->name('rosa.reset');
+    Route::post('/rosa/budget', [FantacalcioController::class, 'rosaBudgetUpdate'])->name('rosa.budget');
     Route::post('/rosa/remove', [FantacalcioController::class, 'rosaRemove'])->name('rosa.remove'); // assicurati che esista nel controller
 
     // Azioni su calciatore
