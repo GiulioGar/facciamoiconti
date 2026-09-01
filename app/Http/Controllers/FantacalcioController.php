@@ -355,56 +355,8 @@ public function rosa()
 {
     $teamName   = 'Azzurlions';
     $teamBudget = $this->getRosaBudget();
-
-    $goalkeeperSlots = array_map(function (array $slot) {
-        return array_merge($slot, [
-            'role_token' => 'P',
-            'title' => 'Portiere ' . ((int) $slot['index'] + 1),
-            'level' => $slot['index'] === 0 ? 'Top' : 'Low',
-            'hint' => 'Slot tecnico portieri, predisposto per futuri blocchi/treni.',
-            'base_perc' => $slot['strategic_weight'],
-        ]);
-    }, config('fantacalcio.rosa_goalkeeper_slots', []));
-
-    $slots = array_merge($goalkeeperSlots, [
-        ['index'=>6,  'role_token'=>'D', 'title'=>'Slot 1: Difensore',        'level'=>'Top',   'hint'=>'Difensore di prima fascia, titolare.', 'base_perc'=>0.028],
-        ['index'=>7,  'role_token'=>'D', 'title'=>'Slot 2: Difensore',        'level'=>'Medio', 'hint'=>'Difensore affidabile di fascia media.', 'base_perc'=>0.018],
-        ['index'=>8,  'role_token'=>'D', 'title'=>'Slot 3: Difensore',        'level'=>'Low',   'hint'=>'Difensore low-cost ma con spazio.', 'base_perc'=>0.001],
-        ['index'=>9,  'role_token'=>'D', 'title'=>'Slot 4: Difensore',        'level'=>'Low',   'hint'=>'Difensore di riserva low-cost.', 'base_perc'=>0.001],
-        ['index'=>10, 'role_token'=>'D', 'title'=>'Slot 5: Difensore',        'level'=>'Low',   'hint'=>'Difensore di copertura.', 'base_perc'=>0.001],
-        ['index'=>11, 'role_token'=>'D', 'title'=>'Slot 6: Difensore',        'level'=>'Medio', 'hint'=>'Difensore titolare di buon livello.', 'base_perc'=>0.032],
-        ['index'=>12, 'role_token'=>'D', 'title'=>'Slot 7: Difensore',        'level'=>'Low',   'hint'=>'Vice difensore economico.', 'base_perc'=>0.001],
-        ['index'=>13, 'role_token'=>'D', 'title'=>'Slot 8: Difensore',        'level'=>'Medio', 'hint'=>'Altro difensore titolare di fascia media.', 'base_perc'=>0.036],
-        ['index'=>14, 'role_token'=>'C', 'title'=>'Slot 1: Centrocampista',   'level'=>'Medio', 'hint'=>'Centrocampista titolare di buon livello.', 'base_perc'=>0.030],
-        ['index'=>15, 'role_token'=>'C', 'title'=>'Slot 2: Centrocampista',   'level'=>'Low',   'hint'=>'Centrocampista economico.', 'base_perc'=>0.001],
-        ['index'=>16, 'role_token'=>'C', 'title'=>'Slot 3: Centrocampista',   'level'=>'Low',   'hint'=>'Jolly di centrocampo low-cost.', 'base_perc'=>0.001],
-        ['index'=>17, 'role_token'=>'C', 'title'=>'Slot 4: Centrocampista',   'level'=>'Medio', 'hint'=>'Centrocampista equilibrato.', 'base_perc'=>0.026],
-        ['index'=>18, 'role_token'=>'C', 'title'=>'Slot 5: Centrocampista',   'level'=>'Low',   'hint'=>'Centrocampista di scorta.', 'base_perc'=>0.001],
-        ['index'=>19, 'role_token'=>'C', 'title'=>'Slot 6: Centrocampista',   'level'=>'Top',   'hint'=>'Centrocampista top con bonus.', 'base_perc'=>0.080],
-        ['index'=>20, 'role_token'=>'C', 'title'=>'Slot 7: Centrocampista',   'level'=>'Medio', 'hint'=>'Altro centrocampista affidabile.', 'base_perc'=>0.036],
-        ['index'=>21, 'role_token'=>'C', 'title'=>'Slot 8: Centrocampista',   'level'=>'Low',   'hint'=>'Centrocampista di rotazione.', 'base_perc'=>0.001],
-        ['index'=>22, 'role_token'=>'A', 'title'=>'Slot 1: Attaccante',       'level'=>'Top',   'hint'=>'Attaccante di prima fascia.', 'base_perc'=>0.171],
-        ['index'=>23, 'role_token'=>'A', 'title'=>'Slot 2: Attaccante',       'level'=>'Medio', 'hint'=>'Attaccante di livello medio.', 'base_perc'=>0.076],
-        ['index'=>24, 'role_token'=>'A', 'title'=>'Slot 3: Attaccante',       'level'=>'Top',   'hint'=>'Prima punta top.', 'base_perc'=>0.224],
-        ['index'=>25, 'role_token'=>'A', 'title'=>'Slot 4: Attaccante',       'level'=>'Low',   'hint'=>'Vice attaccante o scommessa.', 'base_perc'=>0.001],
-        ['index'=>26, 'role_token'=>'A', 'title'=>'Slot 5: Attaccante',       'level'=>'Low',   'hint'=>'Attaccante di completamento rosa.', 'base_perc'=>0.001],
-        ['index'=>27, 'role_token'=>'A', 'title'=>'Slot 6: Attaccante',       'level'=>'Low',   'hint'=>'Ultimo slot offensivo low-cost.', 'base_perc'=>0.001],
-    ]);
-
-    $assignedRows = FantaRosa::orderBy('slot_index')->get([
-        'slot_index', 'external_id', 'nome', 'squadra', 'costo', 'ruolo_esteso', 'classic_role'
-    ]);
-    $assignedByIndex = [];
-    foreach ($assignedRows as $r) {
-        $assignedByIndex[(int) $r->slot_index] = [
-            'ext_id'       => $r->external_id,
-            'nome'         => $r->nome,
-            'team'         => $r->squadra,
-            'roles'        => $r->ruolo_esteso,
-            'classic_role' => $r->classic_role,
-            'costo'        => (int) $r->costo,
-        ];
-    }
+    $slots = $this->buildRosaSlots();
+    $assignedByIndex = $this->loadAssignedByIndex();
 
     $budgetResult = app(RosaBudgetCalculator::class)
         ->calculate($teamBudget, $slots, $assignedByIndex);
@@ -417,6 +369,9 @@ public function rosa()
         'remaining' => $budgetResult['remaining'],
         'completion_floor' => $budgetResult['completion_floor'],
         'strategic_budget' => $budgetResult['strategic_budget'],
+        'strategic_budget_dca' => $budgetResult['strategic_budget_dca'],
+        'goalkeeper' => $budgetResult['goalkeeper'],
+        'roles' => $budgetResult['roles'],
     ];
 
     return view('fantacalcio.rosa', compact('team', 'slots', 'assignedByIndex'));
@@ -534,12 +489,38 @@ public function rosaAdd(Request $request)
         return back()->with('error', 'Acquisto non consentito: crediti insufficienti.');
     }
 
+    $targetSnapshot = null;
+    $massimoSnapshot = null;
+
+    if ($request->role_token !== 'P') {
+        $budgetResult = app(RosaBudgetCalculator::class)
+            ->calculate($teamBudget, $this->buildRosaSlots(), $this->loadAssignedByIndex());
+        $requestedSlotIndex = (int) $request->slot_index;
+        $plannerSlot = collect($budgetResult['slots'])->first(function ($slot) use ($requestedSlotIndex, $request) {
+            return (int) ($slot['index'] ?? -1) === $requestedSlotIndex
+                && ($slot['role_token'] ?? null) === $request->role_token;
+        });
+
+        if (!$plannerSlot || !array_key_exists('target', $plannerSlot) || !array_key_exists('massimo', $plannerSlot)) {
+            return back()->with('error', 'Impossibile determinare target e massimo dello slot selezionato.');
+        }
+
+        $targetSnapshot = $plannerSlot['target'];
+        $massimoSnapshot = $plannerSlot['massimo'];
+
+        if ($targetSnapshot === null || $massimoSnapshot === null) {
+            return back()->with('error', 'Dati strategici mancanti per lo slot selezionato.');
+        }
+    }
+
     FantaRosa::create([
         'external_id'  => $player->external_id,
         'ruolo_esteso' => $player->ruolo_esteso,
         'nome'         => $player->nome,
         'squadra'      => $player->squadra,
         'costo'        => $cost,
+        'target_snapshot' => $targetSnapshot,
+        'massimo_snapshot' => $massimoSnapshot,
         'classic_role' => $request->role_token,
         'slot_index'   => (int) $request->slot_index,
     ]);
@@ -810,6 +791,53 @@ public function updateSlotRole(Request $request)
     }
 
     return back()->with('success', 'Ruolo slot aggiornato.');
+}
+
+private function buildRosaSlots(): array
+{
+    $goalkeeperSlots = array_map(function (array $slot) {
+        return array_merge($slot, [
+            'role_token' => 'P',
+            'title' => 'Portiere ' . ((int) $slot['index'] + 1),
+            'level' => $slot['index'] === 0 ? 'Top' : 'Low',
+            'hint' => 'Slot tecnico portieri, predisposto per futuri blocchi/treni.',
+        ]);
+    }, config('fantacalcio.rosa_goalkeeper_slots', []));
+
+    $dcaSlots = [];
+    foreach (config('fantacalcio.rosa_dca_slots', []) as $roleSlots) {
+        foreach ($roleSlots as $slot) {
+            $dcaSlots[] = array_merge($slot, [
+                'role_token' => $slot['role'],
+                'title' => $slot['label'],
+            ]);
+        }
+    }
+
+    return array_merge($goalkeeperSlots, $dcaSlots);
+}
+
+private function loadAssignedByIndex(): array
+{
+    $assignedRows = FantaRosa::orderBy('slot_index')->get([
+        'slot_index', 'external_id', 'nome', 'squadra', 'costo', 'ruolo_esteso', 'classic_role', 'target_snapshot', 'massimo_snapshot'
+    ]);
+    $assignedByIndex = [];
+
+    foreach ($assignedRows as $r) {
+        $assignedByIndex[(int) $r->slot_index] = [
+            'ext_id' => $r->external_id,
+            'nome' => $r->nome,
+            'team' => $r->squadra,
+            'roles' => $r->ruolo_esteso,
+            'classic_role' => $r->classic_role,
+            'costo' => (int) $r->costo,
+            'target_snapshot' => $r->target_snapshot,
+            'massimo_snapshot' => $r->massimo_snapshot,
+        ];
+    }
+
+    return $assignedByIndex;
 }
 
 

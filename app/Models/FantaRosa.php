@@ -17,13 +17,17 @@ class FantaRosa extends Model
         'nome',
         'squadra',
         'costo',
-             'classic_role',   // ✅ AGGIUNTO
-        'slot_index',     // ✅ (vedi Bug 2)
+        'target_snapshot',
+        'massimo_snapshot',
+        'classic_role',
+        'slot_index',
     ];
 
     protected $casts = [
         'external_id' => 'integer',
-        'costo'       => 'integer',
-         'slot_index'  => 'integer', // ✅
+        'costo' => 'integer',
+        'target_snapshot' => 'integer',
+        'massimo_snapshot' => 'integer',
+        'slot_index' => 'integer',
     ];
 }

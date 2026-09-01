@@ -21,9 +21,22 @@
   .role-D .slot-card { border-left-color: #22c55e; background: rgba(34,197,94,.06); }
   .role-C .slot-card { border-left-color: #a855f7; background: rgba(168,85,247,.06); }
   .role-A .slot-card { border-left-color: #ef4444; background: rgba(239,68,68,.06); }
-  .tag-spesa { min-width: 120px; text-align: right; font-weight: 600; }
   .assigned .slot-title { color: #111827; }
   .assigned .slot-hint { color: #374151; }
+  .summary-grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .summary-card { border: 1px solid rgba(67, 89, 113, .12); border-radius: .75rem; padding: .85rem 1rem; background: #fff; }
+  .summary-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; color: #8592a3; margin-bottom: .25rem; }
+  .summary-value { font-size: 1.25rem; font-weight: 700; color: #566a7f; line-height: 1.1; }
+  .role-summary-grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .role-summary-card { border: 1px solid rgba(67, 89, 113, .12); border-radius: .75rem; padding: .85rem 1rem; background: #fff; }
+  .slot-data-grid { display: grid; gap: .5rem .75rem; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+  .slot-data-label { font-size: .72rem; text-transform: uppercase; color: #8592a3; margin-bottom: .15rem; }
+  .slot-data-value { font-size: .95rem; font-weight: 600; color: #566a7f; }
+  .slot-metrics { min-width: 240px; }
+  .slot-card.slot-status-success { box-shadow: inset 3px 0 0 rgba(113, 221, 55, .8); }
+  .slot-card.slot-status-warning { box-shadow: inset 3px 0 0 rgba(255, 171, 0, .85); }
+  .slot-card.slot-status-danger { box-shadow: inset 3px 0 0 rgba(255, 62, 29, .85); }
+  .snapshot-line { font-size: .9rem; font-weight: 600; color: #566a7f; }
 </style>
 @endpush
 
@@ -46,19 +59,69 @@
   @endif
 
   <div class="card mb-4">
-    <div class="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
-      <div class="d-flex align-items-center gap-2">
-        <i class="bi bi-shield-fill-check text-primary fs-4"></i>
-        <h5 class="mb-0">{{ $team['name'] }}</h5>
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-shield-fill-check text-primary fs-4"></i>
+          <h5 class="mb-0">{{ $team['name'] }}</h5>
+        </div>
+        <span class="badge bg-label-primary budget-pill">Strategia rosa</span>
       </div>
-      <div class="d-flex flex-wrap gap-2">
-        <span class="badge bg-primary budget-pill">Crediti: {{ $team['budget'] }}</span>
-        <span class="badge bg-danger budget-pill">Spesi: {{ $team['spent'] }}</span>
-        <span class="badge bg-success budget-pill">Rimanenti: {{ $team['remaining'] }}</span>
-        <span class="badge bg-warning text-dark budget-pill">Fondo completamento: {{ $team['completion_floor'] }}</span>
-        <span class="badge bg-info text-dark budget-pill">Budget distribuibile: {{ $team['strategic_budget'] }}</span>
+
+      <div class="summary-grid mb-3">
+        <div class="summary-card">
+          <div class="summary-label">Budget Totale</div>
+          <div class="summary-value">{{ number_format($team['budget'], 0, ',', '.') }}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Speso</div>
+          <div class="summary-value">{{ number_format($team['spent'], 0, ',', '.') }}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Residuo</div>
+          <div class="summary-value">{{ number_format($team['remaining'], 0, ',', '.') }}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Fondo Minimo</div>
+          <div class="summary-value">{{ number_format($team['completion_floor'], 0, ',', '.') }}</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-label">Budget Strategico</div>
+          <div class="summary-value">{{ number_format($team['strategic_budget'], 0, ',', '.') }}</div>
+        </div>
+      </div>
+
+      <div class="role-summary-grid">
+        @foreach (['P' => 'Portieri', 'D' => 'Difesa', 'C' => 'Centrocampo', 'A' => 'Attacco'] as $roleToken => $roleName)
+          @php
+            $roleData = $roleToken === 'P'
+              ? ($team['goalkeeper'] ?? [])
+              : ($team['roles'][$roleToken] ?? []);
+          @endphp
+          <div class="role-summary-card">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-semibold">{{ $roleToken }}</span>
+              <small class="text-muted">{{ $roleName }}</small>
+            </div>
+            <div class="slot-data-grid">
+              <div>
+                <div class="slot-data-label">Target Reparto</div>
+                <div class="slot-data-value">{{ number_format((int) ($roleData['target'] ?? 0), 0, ',', '.') }}</div>
+              </div>
+              <div>
+                <div class="slot-data-label">Speso Reparto</div>
+                <div class="slot-data-value">{{ number_format((int) ($roleData['spent'] ?? $roleData['block_spent'] ?? 0), 0, ',', '.') }}</div>
+              </div>
+              <div>
+                <div class="slot-data-label">Residuo Target</div>
+                <div class="slot-data-value">{{ number_format((int) ($roleData['remaining_target'] ?? 0), 0, ',', '.') }}</div>
+              </div>
+            </div>
+          </div>
+        @endforeach
       </div>
     </div>
+
     <div class="card-body border-top">
       <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-end gap-3">
         <form method="POST" action="{{ route('fantacalcio.rosa.budget') }}" class="d-flex flex-column flex-sm-row gap-2 align-items-sm-end">
@@ -91,7 +154,7 @@
   <div class="card mb-4">
     <div class="card-header role-header d-flex align-items-center justify-content-between">
       <span class="fw-semibold"><i class="bi bi-list-check me-2"></i> Slots rosa (28)</span>
-      <small>Il consigliato è ricalcolato sul budget rimanente degli slot liberi</small>
+      <small>Target e massimo sono mostrati solo sugli slot liberi D/C/A</small>
     </div>
 
     <div class="card-body">
@@ -99,29 +162,52 @@
         @php
           $assigned = $assignedByIndex[$slot['index']] ?? null;
           $roleClass = 'role-' . $slot['role_token'];
+          $isGoalkeeper = $slot['role_token'] === 'P';
+          $slotLabel = $slot['label'] ?? $slot['title'];
+          $targetSnapshot = $assigned['target_snapshot'] ?? null;
+          $massimoSnapshot = $assigned['massimo_snapshot'] ?? null;
+          $hasStrategicSnapshot = !$isGoalkeeper && $assigned && $targetSnapshot !== null && $massimoSnapshot !== null;
+          $deltaSnapshot = $hasStrategicSnapshot ? ((int) $assigned['costo'] - (int) $targetSnapshot) : null;
+          $deltaLabel = $deltaSnapshot === null ? null : (($deltaSnapshot > 0 ? '+' : '') . $deltaSnapshot);
+          $statusClass = '';
+
+          if ($hasStrategicSnapshot) {
+            if ((int) $assigned['costo'] <= (int) $targetSnapshot) {
+              $statusClass = 'slot-status-success';
+            } elseif ((int) $assigned['costo'] <= (int) $massimoSnapshot) {
+              $statusClass = 'slot-status-warning';
+            } else {
+              $statusClass = 'slot-status-danger';
+            }
+          }
         @endphp
 
         <div class="{{ $roleClass }}">
-          <div class="card slot-card {{ $assigned ? 'assigned' : '' }}">
+          <div class="card slot-card {{ $assigned ? 'assigned' : '' }} {{ $statusClass }}">
             <div class="card-body py-2 d-flex justify-content-between align-items-center gap-3 flex-wrap">
               <div class="flex-grow-1">
                 <div class="d-flex align-items-center gap-2 mb-1">
-                  <span class="chip bg-light border">{{ $slot['role_token'] }}</span>
+                  <span class="chip bg-light border">{{ $slot['slot_code'] }}</span>
                   <span class="chip bg-light border">{{ $slot['level'] }}</span>
+                  @if($isGoalkeeper && $assigned)
+                    <span class="chip {{ (int) $assigned['costo'] > 0 ? 'bg-label-info' : 'bg-label-secondary' }}">
+                      {{ (int) $assigned['costo'] > 0 ? 'Blocco' : 'Copertura' }}
+                    </span>
+                  @elseif($hasStrategicSnapshot)
+                    <span class="chip {{ $statusClass === 'slot-status-success' ? 'bg-label-success' : ($statusClass === 'slot-status-warning' ? 'bg-label-warning' : 'bg-label-danger') }}">
+                      {{ $statusClass === 'slot-status-success' ? 'Entro target' : ($statusClass === 'slot-status-warning' ? 'Entro max' : 'Oltre max') }}
+                    </span>
+                  @endif
                 </div>
 
                 @if($assigned)
-                  <div class="slot-title">
-                    #{{ $slot['index'] + 1 }} - {{ $assigned['nome'] }}
-                    <small class="text-muted">({{ $assigned['roles'] }}, {{ $assigned['team'] }})</small>
-                  </div>
+                  <div class="slot-title">{{ $slotLabel }}</div>
                   <div class="slot-hint">
-                    Ruolo slot: <strong>{{ $slot['role_token'] }}</strong> - {{ $slot['level'] }}
+                    <strong>{{ $assigned['nome'] }}</strong>
+                    <span class="text-muted">({{ $assigned['team'] }})</span>
                   </div>
                 @else
-                  <div class="slot-title">
-                    #{{ $slot['index'] + 1 }} - {{ $slot['title'] }}
-                  </div>
+                  <div class="slot-title">{{ $slotLabel }}</div>
                   <div class="slot-hint">
                     Ruolo: <strong>{{ $slot['role_token'] }}</strong> - Livello: <strong>{{ $slot['level'] }}</strong>
                     @if(!empty($slot['hint'])) <br><span>{{ $slot['hint'] }}</span> @endif
@@ -129,11 +215,60 @@
                 @endif
               </div>
 
-              <div class="tag-spesa">
-                @if($assigned)
-                  € {{ $assigned['costo'] }}
+              <div class="slot-metrics">
+                @if($isGoalkeeper)
+                  <div class="slot-data-grid">
+                    <div>
+                      <div class="slot-data-label">Giocatore</div>
+                      <div class="slot-data-value">{{ $assigned['nome'] ?? '-' }}</div>
+                    </div>
+                    <div>
+                      <div class="slot-data-label">Squadra</div>
+                      <div class="slot-data-value">{{ $assigned['team'] ?? '-' }}</div>
+                    </div>
+                    <div>
+                      <div class="slot-data-label">Costo</div>
+                      <div class="slot-data-value">{{ $assigned ? number_format($assigned['costo'], 0, ',', '.') : '-' }}</div>
+                    </div>
+                  </div>
+                @elseif($assigned)
+                  <div class="slot-data-grid">
+                    <div>
+                      <div class="slot-data-label">Giocatore</div>
+                      <div class="slot-data-value">{{ $assigned['nome'] }}</div>
+                    </div>
+                    <div>
+                      <div class="slot-data-label">Squadra</div>
+                      <div class="slot-data-value">{{ $assigned['team'] }}</div>
+                    </div>
+                    <div>
+                      <div class="slot-data-label">Costo Reale</div>
+                      <div class="slot-data-value">{{ number_format($assigned['costo'], 0, ',', '.') }}</div>
+                    </div>
+                  </div>
+                  @if($hasStrategicSnapshot)
+                    <div class="snapshot-line mt-2">
+                      Pagato {{ number_format($assigned['costo'], 0, ',', '.') }}
+                      &middot; Target {{ number_format($targetSnapshot, 0, ',', '.') }}
+                      &middot; Max {{ number_format($massimoSnapshot, 0, ',', '.') }}
+                      &middot; {{ $deltaLabel }}
+                    </div>
+                  @else
+                    <div class="text-muted small mt-2">Riferimento strategico non disponibile</div>
+                  @endif
                 @else
-                  Consigliato: ~€ {{ number_format($slot['suggested'], 0, ',', '.') }}
+                  <div class="slot-data-grid">
+                    <div>
+                      <div class="slot-data-label">Target</div>
+                      <div class="slot-data-value">{{ number_format((int) ($slot['target'] ?? $slot['suggested'] ?? 0), 0, ',', '.') }}</div>
+                    </div>
+                    @if(!$isGoalkeeper)
+                      <div>
+                        <div class="slot-data-label">Massimo</div>
+                        <div class="slot-data-value">{{ number_format((int) ($slot['massimo'] ?? 0), 0, ',', '.') }}</div>
+                      </div>
+                    @endif
+                  </div>
                 @endif
               </div>
 

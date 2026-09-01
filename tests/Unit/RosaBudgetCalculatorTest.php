@@ -267,6 +267,150 @@ class RosaBudgetCalculatorTest extends TestCase
         $this->assertSame(10, $suggested['A6']);
     }
 
+    public function test_empty_dca_roster_with_budget_500_has_expected_c_and_a_maximums(): void
+    {
+        $result = $this->calculator()->calculate(500, $this->dcaSlots(), []);
+        $slots = $this->slotsByCode($result['slots']);
+
+        $this->assertSame(43, $slots['C1']['target']);
+        $this->assertSame(56, $slots['C1']['massimo']);
+        $this->assertSame(33, $slots['C2']['target']);
+        $this->assertSame(42, $slots['C2']['massimo']);
+        $this->assertSame(27, $slots['C3']['target']);
+        $this->assertSame(33, $slots['C3']['massimo']);
+        $this->assertSame(17, $slots['C4']['target']);
+        $this->assertSame(20, $slots['C4']['massimo']);
+        $this->assertSame(12, $slots['C5']['target']);
+        $this->assertSame(14, $slots['C5']['massimo']);
+        $this->assertSame(6, $slots['C6']['target']);
+        $this->assertSame(7, $slots['C6']['massimo']);
+        $this->assertSame(6, $slots['C7']['target']);
+        $this->assertSame(7, $slots['C7']['massimo']);
+        $this->assertSame(6, $slots['C8']['target']);
+        $this->assertSame(7, $slots['C8']['massimo']);
+        $this->assertSame(114, $slots['A1']['target']);
+        $this->assertSame(143, $slots['A1']['massimo']);
+        $this->assertSame(86, $slots['A2']['target']);
+        $this->assertSame(104, $slots['A2']['massimo']);
+        $this->assertSame(39, $slots['A3']['target']);
+        $this->assertSame(45, $slots['A3']['massimo']);
+        $this->assertSame(20, $slots['A4']['target']);
+        $this->assertSame(22, $slots['A4']['massimo']);
+        $this->assertSame(11, $slots['A5']['target']);
+        $this->assertSame(12, $slots['A5']['massimo']);
+        $this->assertSame(10, $slots['A6']['target']);
+        $this->assertSame(11, $slots['A6']['massimo']);
+    }
+
+    public function test_a1_bought_at_130_recalculates_attack_targets_and_maximums(): void
+    {
+        $result = $this->calculator()->calculate(500, $this->dcaSlots(), [
+            22 => ['classic_role' => 'A', 'costo' => 130],
+        ]);
+        $slots = $this->slotsByCode($result['slots']);
+
+        $this->assertSame(370, $result['remaining']);
+        $this->assertSame(150, $result['roles']['A']['remaining_target']);
+        $this->assertSame(78, $slots['A2']['target']);
+        $this->assertSame(90, $slots['A2']['massimo']);
+        $this->assertSame(35, $slots['A3']['target']);
+        $this->assertSame(40, $slots['A3']['massimo']);
+        $this->assertSame(18, $slots['A4']['target']);
+        $this->assertSame(20, $slots['A4']['massimo']);
+        $this->assertSame(10, $slots['A5']['target']);
+        $this->assertSame(11, $slots['A5']['massimo']);
+        $this->assertSame(9, $slots['A6']['target']);
+        $this->assertSame(10, $slots['A6']['massimo']);
+    }
+
+    public function test_a1_bought_at_145_recalculates_attack_targets_and_maximums(): void
+    {
+        $result = $this->calculator()->calculate(500, $this->dcaSlots(), [
+            22 => ['classic_role' => 'A', 'costo' => 145],
+        ]);
+        $slots = $this->slotsByCode($result['slots']);
+
+        $this->assertSame(355, $result['remaining']);
+        $this->assertSame(135, $result['roles']['A']['remaining_target']);
+        $this->assertSame(70, $slots['A2']['target']);
+        $this->assertSame(81, $slots['A2']['massimo']);
+        $this->assertSame(31, $slots['A3']['target']);
+        $this->assertSame(35, $slots['A3']['massimo']);
+        $this->assertSame(16, $slots['A4']['target']);
+        $this->assertSame(18, $slots['A4']['massimo']);
+        $this->assertSame(9, $slots['A5']['target']);
+        $this->assertSame(10, $slots['A5']['massimo']);
+        $this->assertSame(9, $slots['A6']['target']);
+        $this->assertSame(10, $slots['A6']['massimo']);
+    }
+
+    public function test_buying_a1_below_target_keeps_attack_targets_and_maximums_consistent(): void
+    {
+        $result = $this->calculator()->calculate(500, $this->dcaSlots(), [
+            22 => ['classic_role' => 'A', 'costo' => 95],
+        ]);
+        $slots = $this->slotsByCode($result['slots']);
+
+        $this->assertSame(405, $result['remaining']);
+        $this->assertSame(185, $result['roles']['A']['remaining_target']);
+        $this->assertSame(96, $slots['A2']['target']);
+        $this->assertSame(112, $slots['A2']['massimo']);
+        $this->assertSame(43, $slots['A3']['target']);
+        $this->assertSame(49, $slots['A3']['massimo']);
+        $this->assertSame(22, $slots['A4']['target']);
+        $this->assertSame(24, $slots['A4']['massimo']);
+        $this->assertSame(12, $slots['A5']['target']);
+        $this->assertSame(13, $slots['A5']['massimo']);
+        $this->assertSame(12, $slots['A6']['target']);
+        $this->assertSame(13, $slots['A6']['massimo']);
+    }
+
+    public function test_overspent_attack_department_collapses_maximum_to_target(): void
+    {
+        $result = $this->calculator()->calculate(500, $this->dcaSlots(), [
+            22 => ['classic_role' => 'A', 'costo' => 300],
+        ]);
+        $slots = $this->slotsByCode($result['slots']);
+
+        $this->assertSame(0, $result['roles']['A']['remaining_target']);
+        $this->assertSame($slots['A2']['target'], $slots['A2']['massimo']);
+        $this->assertSame($slots['A3']['target'], $slots['A3']['massimo']);
+        $this->assertSame($slots['A4']['target'], $slots['A4']['massimo']);
+        $this->assertSame($slots['A5']['target'], $slots['A5']['massimo']);
+        $this->assertSame($slots['A6']['target'], $slots['A6']['massimo']);
+    }
+
+    public function test_hard_cap_lower_than_theoretical_maximum_is_enforced(): void
+    {
+        $result = $this->calculator()->calculate(140, $this->dcaSlots(), [
+            22 => ['classic_role' => 'A', 'costo' => 90],
+        ]);
+        $slots = $this->slotsByCode($result['slots']);
+
+        $this->assertSame(6, $slots['A2']['hard_cap']);
+        $this->assertSame(6, $slots['A2']['massimo']);
+        $this->assertSame(1, $slots['A6']['hard_cap']);
+        $this->assertSame(1, $slots['A6']['massimo']);
+    }
+
+    public function test_maximum_never_exceeds_hard_cap(): void
+    {
+        $result = $this->calculator()->calculate(500, $this->allRosaSlots(), [
+            22 => ['classic_role' => 'A', 'costo' => 145],
+            14 => ['classic_role' => 'C', 'costo' => 55],
+            0 => ['classic_role' => 'P', 'team' => 'Napoli', 'costo' => 20],
+            1 => ['classic_role' => 'P', 'team' => 'Napoli', 'costo' => 0],
+        ]);
+
+        foreach ($result['slots'] as $slot) {
+            if (($slot['role'] ?? null) === 'P' || (int) ($slot['suggested'] ?? 0) === 0) {
+                continue;
+            }
+
+            $this->assertLessThanOrEqual($slot['hard_cap'], $slot['massimo']);
+        }
+    }
+
     public function test_role_under_target_receives_strategic_budget(): void
     {
         $assigned = [
@@ -422,5 +566,16 @@ class RosaBudgetCalculatorTest extends TestCase
     private function suggestedValues(array $slots): array
     {
         return array_values(array_column($slots, 'suggested'));
+    }
+
+    private function slotsByCode(array $slots): array
+    {
+        $indexed = [];
+
+        foreach ($slots as $slot) {
+            $indexed[$slot['slot_code']] = $slot;
+        }
+
+        return $indexed;
     }
 }
