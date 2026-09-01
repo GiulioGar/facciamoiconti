@@ -33,6 +33,36 @@ class FantacalcioController extends Controller
         return mb_strtoupper($team, 'UTF-8');
     }
 
+    private function resolveRosaRole(FantaRosa $player): string
+    {
+        if ($player->classic_role !== null) {
+            return $player->classic_role;
+        }
+
+        $slotIndex = (int) $player->slot_index;
+
+        foreach (config('fantacalcio.rosa_goalkeeper_slots', []) as $slot) {
+            if ((int) $slot['index'] === $slotIndex) {
+                return 'P';
+            }
+        }
+
+        foreach (config('fantacalcio.rosa_dca_slots', []) as $role => $slots) {
+            foreach ($slots as $slot) {
+                if ((int) $slot['index'] === $slotIndex) {
+                    return $role;
+                }
+            }
+        }
+
+        $listonePlayer = FantaListone::where('external_id', $player->external_id)->first();
+        if ($listonePlayer && $listonePlayer->ruolo) {
+            return $listonePlayer->ruolo;
+        }
+
+        return 'D';
+    }
+
     public function index()
     {
         $listone = FantaListone::orderBy('ruolo')
@@ -551,6 +581,79 @@ public function rosaReset()
     }
 
     return back()->with('success', 'Rosa azzerata.');
+}
+
+public function rosaRemove(Request $request)
+{
+    $v = Validator::make($request->all(), [
+        'external_id' => ['required', 'integer'],
+    ]);
+
+    if ($v->fails()) {
+        return back()->withErrors($v)->with('error', 'Dati non validi.');
+    }
+
+    $externalId = (int) $request->external_id;
+    $errorMessage = null;
+
+    try {
+        DB::transaction(function () use ($externalId, &$errorMessage) {
+            $rosaPlayer = FantaRosa::where('external_id', $externalId)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$rosaPlayer) {
+                $errorMessage = 'Giocatore non trovato in rosa.';
+                return;
+            }
+
+            $role = $this->resolveRosaRole($rosaPlayer);
+
+            if ($role !== 'P') {
+                $rosaPlayer->delete();
+                FantaListone::where('external_id', $externalId)->update(['stato' => 0]);
+                return;
+            }
+
+            $mainCosto = (int) $rosaPlayer->costo;
+
+            if ($mainCosto === 0) {
+                $rosaPlayer->delete();
+                FantaListone::where('external_id', $externalId)->update(['stato' => 0]);
+                return;
+            }
+
+            $teamKey = $this->normalizeRosaTeam($rosaPlayer->squadra);
+            $goalkeeperSlotIndices = array_column(config('fantacalcio.rosa_goalkeeper_slots', []), 'index');
+
+            $covers = FantaRosa::whereIn('slot_index', $goalkeeperSlotIndices)
+                ->where('id', '!=', $rosaPlayer->id)
+                ->lockForUpdate()
+                ->get()
+                ->filter(fn($r) => $this->normalizeRosaTeam($r->squadra) === $teamKey)
+                ->sortBy('id')
+                ->values();
+
+            if ($covers->isNotEmpty()) {
+                FantaRosa::where('id', $covers->first()->id)->update([
+                    'costo' => $mainCosto,
+                    'target_snapshot' => null,
+                    'massimo_snapshot' => null,
+                ]);
+            }
+
+            $rosaPlayer->delete();
+            FantaListone::where('external_id', $externalId)->update(['stato' => 0]);
+        });
+    } catch (\Throwable $e) {
+        return back()->with('error', 'Errore durante la rimozione: ' . $e->getMessage());
+    }
+
+    if ($errorMessage !== null) {
+        return back()->with('error', $errorMessage);
+    }
+
+    return back()->with('success', 'Giocatore rimosso dalla rosa.');
 }
 
 public function rosaBudgetUpdate(Request $request)

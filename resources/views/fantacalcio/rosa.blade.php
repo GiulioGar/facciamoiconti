@@ -231,7 +231,13 @@
                     @endif
                   </div>
                   @if($assigned)
-                    <button class="btn btn-sm btn-secondary flex-shrink-0" disabled>Assegnato</button>
+                    <form method="POST" action="{{ route('fantacalcio.rosa.remove') }}"
+                          onsubmit="return confirm('Vuoi rimuovere questo giocatore dalla rosa?');"
+                          class="flex-shrink-0">
+                      @csrf
+                      <input type="hidden" name="external_id" value="{{ $assigned['ext_id'] }}">
+                      <button type="submit" class="btn btn-sm btn-outline-danger">Rimuovi</button>
+                    </form>
                   @else
                     <button
                       class="btn btn-sm btn-outline-primary select-player-btn flex-shrink-0"
@@ -331,7 +337,13 @@
 
                 {{-- Pulsante --}}
                 @if($assigned)
-                  <button class="btn btn-sm btn-secondary flex-shrink-0" disabled>Assegnato</button>
+                  <form method="POST" action="{{ route('fantacalcio.rosa.remove') }}"
+                        onsubmit="return confirm('Vuoi rimuovere questo giocatore dalla rosa?');"
+                        class="flex-shrink-0">
+                    @csrf
+                    <input type="hidden" name="external_id" value="{{ $assigned['ext_id'] }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Rimuovi</button>
+                  </form>
                 @else
                   <button
                     class="btn btn-sm btn-outline-primary select-player-btn flex-shrink-0"
