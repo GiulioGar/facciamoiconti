@@ -26,6 +26,7 @@ protected $fillable = [
     'diff_quota_m',
     'fvm_m',
     'score',
+    'fanta_index',
     'stato',
     'like',
     'dislike',
@@ -39,6 +40,7 @@ protected $fillable = [
         'level'               => 'integer',
         'recommended_credits' => 'integer',
         'score'               => 'decimal:2',
+        'fanta_index'         => 'integer',
     ];
 
 }

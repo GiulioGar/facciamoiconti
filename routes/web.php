@@ -151,6 +151,7 @@ Route::post('/listone/{id}/level', [FantacalcioController::class, 'updateLevel']
     // Statistiche storiche + score appetibilità (Formula C)
     Route::post('/stats/import',      [FantacalcioController::class, 'statsImport'])->name('stats.import');
     Route::post('/stats/recalculate', [FantacalcioController::class, 'scoreRecalculate'])->name('stats.recalculate');
+    Route::post('/goat/import',       [FantacalcioController::class, 'goatImport'])->name('goat.import');
 
 });
 

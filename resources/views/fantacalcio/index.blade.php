@@ -95,6 +95,13 @@
             <i class="bi bi-graph-up-arrow me-1"></i> Aggiorna livelli
           </button>
         </form>
+        <form action="{{ route('fantacalcio.goat.import') }}" method="POST" enctype="multipart/form-data" class="m-0 ms-2 d-flex align-items-center gap-1">
+          @csrf
+          <input type="file" name="json" accept=".json" class="form-control form-control-sm" style="max-width:160px" required>
+          <button type="submit" class="btn btn-outline-warning btn-sm text-nowrap">
+            <i class="bi bi-lightning-fill me-1"></i> Import Goat
+          </button>
+        </form>
       </div>
     </div>
 
@@ -122,18 +129,15 @@
           <thead class="table-dark">
             <tr>
               <th class="text-center">Asta</th>
-              <th>ID</th>
               <th>Ruolo</th>
               <th>Nome</th>
               <th>Squadra</th>
               <th class="text-end">FVM</th>
               <th class="text-center">Titolare</th>
-              <th class="text-center">2024</th>
+              <th class="text-center">Score</th>
+              <th class="text-center">Level</th>
               <th class="text-center">Like</th>
               <th class="text-center">Dislike</th>
-              <th class="text-center">Punteggio</th>
-              <th class="text-center">Categoria</th>
-              <th class="text-end">Crediti</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -189,7 +193,7 @@
     `;
   }
 
-  const ROW_ID_IDX = 13;
+  const ROW_ID_IDX = 10;
 
   const table = $('#listone-table').DataTable({
     processing: true,
@@ -199,10 +203,9 @@
     lengthMenu: [10, 25, 50, 100],
     pageLength: 25,
     order: [
-      [10, 'desc'],
-      [8, 'desc'],
       [6, 'desc'],
-      [3, 'asc']
+      [8, 'desc'],
+      [2, 'asc']
     ],
     ajax: {
       url: "{{ route('fantacalcio.listone.data') }}",
@@ -217,10 +220,16 @@
       { data: 1 },
       { data: 2 },
       { data: 3 },
-      { data: 4 },
-      { data: 5, className: 'text-end' },
-      { data: 6, className: 'text-center', orderable: false, render: (d, type, row) => renderTitolarePill(d, row) },
-      { data: 7, className: 'text-center' },
+      { data: 4, className: 'text-end' },
+      { data: 5, className: 'text-center', orderable: false, render: (d, type, row) => renderTitolarePill(d, row) },
+      { data: 6, className: 'text-center fw-semibold', render: d => d !== null ? d : '-' },
+      { data: 7, className: 'text-center', render: (d, type, row) => {
+          const lvl = parseInt(d ?? 3, 10);
+          const id = row[ROW_ID_IDX];
+          const label = {1:'Scarso',2:'Basso',3:'Medio',4:'Ottimo',5:'TOP'}[lvl] || 'Medio';
+          const cls = {1:'secondary',2:'secondary',3:'info',4:'primary',5:'success'}[lvl] || 'info';
+          return `<span class="badge bg-${cls} cell-level-edit" data-id="${id}" data-level="${lvl}" title="Clic per modificare">${lvl} - ${label}</span>`;
+      }},
       { data: 8, className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-like" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-up me-1"></i><strong>${d}</strong></span>`;
@@ -228,20 +237,6 @@
       { data: 9, className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-dislike" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-down me-1"></i><strong>${d}</strong></span>`;
-      }},
-      { data: 10, className: 'text-center fw-semibold' },
-      { data: 11, className: 'text-center', render: (d, type, row) => {
-          const lvl = parseInt(d ?? 3, 10);
-          const id = row[ROW_ID_IDX];
-          const label = {1:'Scarso',2:'Basso',3:'Medio',4:'Ottimo',5:'TOP'}[lvl] || 'Medio';
-          const cls = {1:'secondary',2:'secondary',3:'info',4:'primary',5:'success'}[lvl] || 'info';
-          return `<span class="badge bg-${cls} cell-level-edit" data-id="${id}" data-level="${lvl}" title="Clic per modificare">${lvl} - ${label}</span>`;
-      }},
-      { data: 12, className: 'text-end', render: (d, type, row) => {
-          const id = row[ROW_ID_IDX];
-          const val = (d === null || d === '-') ? '' : parseInt(d, 10);
-          const display = (val === '' ? '-' : val);
-          return `<span class="cell-credits-edit" data-id="${id}" data-value="${val}" title="Clic per modificare crediti">${display}</span>`;
       }},
     ],
     responsive: {
@@ -265,10 +260,10 @@
       ]
     },
     columnDefs: [
-      { responsivePriority: 1, targets: [3, 8, 9, 10] },
-      { responsivePriority: 2, targets: [0, 2, 4, 6, 12] },
-      { responsivePriority: 50, targets: [11, 7] },
-      { responsivePriority: 100, targets: [1, 5] }
+      { responsivePriority: 1,   targets: [2, 6, 7] },
+      { responsivePriority: 2,   targets: [0, 1, 8, 9] },
+      { responsivePriority: 50,  targets: [3, 5] },
+      { responsivePriority: 100, targets: [4] }
     ],
     rowCallback: function(row, data) {
       if (Number(data[0]) === 1) $(row).addClass('dt-row-assigned');
@@ -364,40 +359,6 @@
     });
   });
 
-  $('#listone-table').on('click', '.cell-credits-edit', function(e) {
-    e.stopPropagation();
-    const id = this.getAttribute('data-id');
-    const cur = this.getAttribute('data-value');
-    const val = prompt('Imposta crediti consigliati (1..2500), lascia vuoto per nessun valore:', cur || '');
-    if (val === null) return;
-
-    let payload;
-    if (val.trim() === '') {
-      payload = { recommended_credits: null };
-    } else {
-      const n = parseInt(val, 10);
-      if (isNaN(n) || n < 1 || n > 2500) {
-        alert('Valore non valido. Inserisci un intero tra 1 e 2500, oppure lascia vuoto.');
-        return;
-      }
-      payload = { recommended_credits: n };
-    }
-
-    fetch("{{ route('fantacalcio.listone.updateCredits', ['id'=>'__ID__']) }}".replace('__ID__', id), {
-      method: 'POST',
-      headers: {
-        'X-CSRF-TOKEN': csrf,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    })
-    .then(r => r.json())
-    .then(json => {
-      if (json.ok) table.ajax.reload(null, false);
-      else alert(json.message || 'Errore durante il salvataggio dei crediti.');
-    });
-  });
 })();
 </script>
 

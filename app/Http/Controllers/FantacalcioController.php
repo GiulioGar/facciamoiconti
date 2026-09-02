@@ -312,6 +312,8 @@ class FantacalcioController extends Controller
             ])
             ->toArray();
 
+        $validIds = FantaQuotazione::pluck('external_id')->toArray();
+
         DB::beginTransaction();
         try {
             // Nuovi: inserisce tutta la riga. Esistenti: aggiorna quote + fvm + azzera like/dislike stagione precedente
@@ -320,13 +322,16 @@ class FantacalcioController extends Controller
                 ['external_id'],
                 ['fvm','quota_a','quota_i','diff_quota','quota_a_m','quota_i_m','diff_quota_m','fvm_m','like','dislike','updated_at']
             );
+            // Rimuove giocatori non piu' presenti nelle quotazioni correnti
+            $removed = FantaListone::whereNotIn('external_id', $validIds)->count();
+            FantaListone::whereNotIn('external_id', $validIds)->delete();
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
             return back()->with('error', 'Errore durante aggiornamento listone: ' . $e->getMessage());
         }
 
-        return back()->with('success', "Lista aggiornata: inseriti ".count($toInsertIds).", aggiornati ".count($toUpdateIds).".");
+        return back()->with('success', "Lista aggiornata: inseriti ".count($toInsertIds).", aggiornati ".count($toUpdateIds).", rimossi {$removed}.");
     }
 
 public function listoneData(Request $request)
@@ -348,30 +353,24 @@ public function listoneData(Request $request)
         $query->where('ruolo', $roleClassic);
     }
 
-    $avgSub = "(SELECT AVG(m2.mv24) FROM fanta_listone m2 WHERE m2.ruolo = fanta_listone.ruolo AND m2.mv24 IS NOT NULL)";
-    $mvEffExpr = "COALESCE(fanta_listone.mv24, {$avgSub}, 1.0)";
-    $likesSigned = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
+    $likesSigned    = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
     $dislikesSigned = "CAST(COALESCE(fanta_listone.`dislike`, 0) AS SIGNED)";
-    $scoreExpr = "(fanta_listone.fvm * {$mvEffExpr}) + (({$likesSigned} * 5) - {$dislikesSigned} * 5)";
 
-    $recordsTotal = \App\Models\FantaListone::count();
+    $recordsTotal    = \App\Models\FantaListone::count();
     $recordsFiltered = (clone $query)->count();
-    $order = $request->input('order', []);
+    $order           = $request->input('order', []);
 
     $columns = [
-        0  => 'stato',
-        1  => 'external_id',
-        2  => 'ruolo',
-        3  => 'nome',
-        4  => 'squadra',
-        5  => 'fvm',
-        6  => 'titolare',
-        7  => DB::raw($mvEffExpr),
-        8  => DB::raw($likesSigned),
-        9  => DB::raw($dislikesSigned),
-        10 => DB::raw($scoreExpr),
-        11 => 'level',
-        12 => 'recommended_credits',
+        0 => 'stato',
+        1 => 'ruolo',
+        2 => 'nome',
+        3 => 'squadra',
+        4 => 'fvm',
+        5 => 'titolare',
+        6 => 'score',
+        7 => 'level',
+        8 => DB::raw($likesSigned),
+        9 => DB::raw($dislikesSigned),
     ];
 
     if (!empty($order)) {
@@ -387,9 +386,8 @@ public function listoneData(Request $request)
             }
         }
     } else {
-        $query->orderByRaw($scoreExpr . ' DESC')
+        $query->orderBy('score', 'desc')
             ->orderByRaw($likesSigned . ' DESC')
-            ->orderBy('titolare', 'asc')
             ->orderBy('nome', 'asc');
     }
 
@@ -398,7 +396,6 @@ public function listoneData(Request $request)
         ->take($length)
         ->select([
             'id',
-            'external_id',
             'ruolo',
             'nome',
             'squadra',
@@ -407,33 +404,24 @@ public function listoneData(Request $request)
             'stato',
             DB::raw('`like` as likes'),
             DB::raw('`dislike` as dislikes'),
-            'mv24',
-            DB::raw("{$scoreExpr} as score_calc"),
+            'score',
             'level',
-            'recommended_credits',
         ])
         ->get();
 
     $data = $rows->map(function ($r) {
-        $mv24Display = $r->mv24 === null
-            ? 'N.D.'
-            : number_format((float) $r->mv24, 2, '.', '');
-
         return [
-            (int) $r->stato,
-            $r->external_id,
-            $r->ruolo,
-            $r->nome,
-            $r->squadra,
-            (string) (int) round($r->fvm),
-            $r->titolare === null ? null : (int) $r->titolare,
-            $mv24Display,
-            (int) $r->likes,
-            (int) $r->dislikes,
-            number_format((float) $r->score_calc, 2, '.', ''),
-            (int) ($r->level ?? 3),
-            $r->recommended_credits ?? '-',
-            (int) $r->id,
+            (int) $r->stato,                                                          // 0 - Asta
+            $r->ruolo,                                                                // 1 - Ruolo
+            $r->nome,                                                                 // 2 - Nome
+            $r->squadra,                                                              // 3 - Squadra
+            (string) (int) round($r->fvm),                                            // 4 - FVM
+            $r->titolare === null ? null : (int) $r->titolare,                        // 5 - Titolare
+            $r->score !== null ? number_format((float) $r->score, 2, '.', '') : null, // 6 - Score
+            (int) ($r->level ?? 3),                                                   // 7 - Level
+            (int) $r->likes,                                                          // 8 - Like
+            (int) $r->dislikes,                                                       // 9 - Dislike
+            (int) $r->id,                                                             // 10 - hidden id
         ];
     });
 
@@ -873,29 +861,34 @@ public function updateLevel(Request $request, $id)
 }
 
 
-// == CALCOLO AUTOMATICO LIVELLI ==
+// == CALCOLO AUTOMATICO LIVELLI (Formula C, percentili per ruolo) ==
 public function updateLevels(Request $request)
 {
-    // ðŸ‘‰ allinea la formula a quella che usi altrove (like*5 âˆ’ dislike*5)
-    $avgSub         = "(SELECT AVG(m2.mv24) FROM fanta_listone m2 WHERE m2.ruolo = fanta_listone.ruolo AND m2.mv24 IS NOT NULL)";
-    $mvEffExpr      = "COALESCE(fanta_listone.mv24, {$avgSub}, 1.0)";
-    $likesSigned    = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
-    $dislikesSigned = "CAST(COALESCE(fanta_listone.`dislike`, 0) AS SIGNED)";
-    $scoreExpr      = "(fanta_listone.fvm * {$mvEffExpr}) + (({$likesSigned} * 5) - ({$dislikesSigned} * 5))";
+    // Soglie: L5=max(P97,72)  L4=max(P87,65)  L3=max(P75,55)  L2=max(P50,45)
+    $percDef  = [5 => 97.0, 4 => 87.0, 3 => 75.0, 2 => 50.0];
+    $floorDef = [5 => 72.0, 4 => 65.0, 3 => 55.0, 2 => 45.0];
 
-    // Budget per reparto (Classic role)
-    $roleBudget = ['P'=>120, 'D'=>300, 'C'=>900, 'A'=>1180];
-    // Percentuali per level
-    $levelPerc = [5=>0.50, 4=>0.15, 3=>0.05, 2=>0.01, 1=>0.00];
+    // Budget per reparto e percentuali per level (invariati)
+    $roleBudget = ['P' => 120, 'D' => 300, 'C' => 900, 'A' => 1180];
+    $levelPerc  = [5 => 0.50, 4 => 0.15, 3 => 0.05, 2 => 0.01, 1 => 0.00];
 
-    // prendo id, ruolo classic e score
     $rows = FantaListone::query()
-        ->select(['id','ruolo', DB::raw("{$scoreExpr} as score_calc")])
+        ->select(['id', 'ruolo', 'score'])
         ->get();
 
     if ($rows->isEmpty()) {
         return back()->with('error', 'Nessun dato per il calcolo livelli.');
     }
+
+    // Helper: valore al percentile P in un array già ordinato
+    $pctValue = function (array $sorted, float $p) {
+        $n = count($sorted);
+        if ($n === 0) return 0.0;
+        $i  = ($p / 100.0) * ($n - 1);
+        $lo = (int) floor($i);
+        $hi = (int) ceil($i);
+        return $sorted[$lo] + ($sorted[$hi] - $sorted[$lo]) * ($i - $lo);
+    };
 
     $byRole = $rows->groupBy('ruolo');
 
@@ -904,57 +897,48 @@ public function updateLevels(Request $request)
     $ids        = [];
 
     foreach ($byRole as $role => $items) {
-        $sorted = $items->sortByDesc('score_calc')->values();
+        // Score ordinati per calcolo percentili
+        $sorted = $items
+            ->filter(fn($r) => $r->score !== null)
+            ->pluck('score')
+            ->map(fn($v) => (float) $v)
+            ->sort()
+            ->values()
+            ->toArray();
 
-        // TOP 5 per ruolo -> level 5
-        foreach ($sorted->take(5) as $r) {
-            $lvl = 5;
-            $ids[]      = (int)$r->id;
-            $levelCase .= "WHEN {$r->id} THEN {$lvl} ";
-            $budget     = $roleBudget[$role] ?? 0;
-            $credits    = ($budget > 0) ? (int)floor($budget * $levelPerc[$lvl]) : 0;
-            $credits    = max(1, min(2500, $credits));
-            $creditCase .= "WHEN {$r->id} THEN {$credits} ";
+        // Soglie effettive per questo ruolo
+        $thresh = [];
+        foreach ([5, 4, 3, 2] as $lvl) {
+            $thresh[$lvl] = max($pctValue($sorted, $percDef[$lvl]), $floorDef[$lvl]);
         }
 
-        // Restanti -> fasce 1..4
-        $rest = $sorted->slice(5)->values();
-        if ($rest->isEmpty()) continue;
-
-        $scores = $rest->pluck('score_calc')->map(fn($v)=>(float)$v);
-        $mean   = $scores->avg();
-        $std    = self::stddev($scores);
-        // soglie (tarabili)
-        $t1 = $mean + 0.75*$std; // -> 4
-        $t2 = $mean - 0.25*$std; // -> 3
-        $t3 = $mean - 1.25*$std; // -> 2
-
-        foreach ($rest as $r) {
-            $s = (float)$r->score_calc;
-            $lvl = 3;
-            if ($std > 0) {
-                if     ($s >= $t1) $lvl = 4;
-                elseif ($s >= $t2) $lvl = 3;
-                elseif ($s >= $t3) $lvl = 2;
-                else               $lvl = 1;
+        foreach ($items as $r) {
+            if ($r->score === null) {
+                $lvl = 1;
+            } else {
+                $s = (float) $r->score;
+                if      ($s >= $thresh[5]) $lvl = 5;
+                elseif  ($s >= $thresh[4]) $lvl = 4;
+                elseif  ($s >= $thresh[3]) $lvl = 3;
+                elseif  ($s >= $thresh[2]) $lvl = 2;
+                else                       $lvl = 1;
             }
 
-            $ids[]      = (int)$r->id;
+            $ids[]      = (int) $r->id;
             $levelCase .= "WHEN {$r->id} THEN {$lvl} ";
 
             $budget = $roleBudget[$role] ?? 0;
             if ($lvl === 1) {
-                $credits = 1; // regola speciale
+                $credits = 1;
             } else {
-                $credits = ($budget > 0) ? (int)floor($budget * ($levelPerc[$lvl] ?? 0.0)) : 0;
+                $credits = ($budget > 0) ? (int) floor($budget * ($levelPerc[$lvl] ?? 0.0)) : 0;
                 $credits = max(1, $credits);
             }
-            $credits    = min(2500, $credits);
-            $creditCase .= "WHEN {$r->id} THEN {$credits} ";
+            $creditCase .= "WHEN {$r->id} THEN " . min(2500, $credits) . " ";
         }
     }
 
-    if (empty($ids)) return back()->with('success','Nessun aggiornamento necessario.');
+    if (empty($ids)) return back()->with('success', 'Nessun aggiornamento necessario.');
 
     $levelCase  .= "END";
     $creditCase .= "END";
@@ -969,7 +953,7 @@ public function updateLevels(Request $request)
         DB::commit();
     } catch (\Throwable $e) {
         DB::rollBack();
-        return back()->with('error', 'Errore aggiornando livelli/crediti: '.$e->getMessage());
+        return back()->with('error', 'Errore aggiornando livelli/crediti: ' . $e->getMessage());
     }
 
     return back()->with('success', 'Livelli e crediti ricalcolati con successo.');
@@ -1186,6 +1170,70 @@ private function loadAssignedByIndex(): array
         }
 
         return back()->with('success', "Score aggiornato per {$count} giocatori.");
+    }
+
+    // --- IMPORT JSON fantagoat (fanta_index + titolarita) ---
+    public function goatImport(Request $request)
+    {
+        $request->validate(['json' => ['required', 'file', 'mimes:json', 'max:20480']]);
+
+        $content = file_get_contents($request->file('json')->getRealPath());
+        $items   = json_decode($content, true)['items'] ?? [];
+
+        $codeMap = [
+            'ATA' => 'Atalanta',  'BOL' => 'Bologna',   'CAG' => 'Cagliari',
+            'COM' => 'Como',      'FIO' => 'Fiorentina', 'FRO' => 'Frosinone',
+            'GEN' => 'Genoa',     'INT' => 'Inter',      'JUV' => 'Juventus',
+            'LAZ' => 'Lazio',     'LEC' => 'Lecce',      'MIL' => 'Milan',
+            'MON' => 'Monza',     'NAP' => 'Napoli',     'PAR' => 'Parma',
+            'ROM' => 'Roma',      'SAS' => 'Sassuolo',   'TOR' => 'Torino',
+            'UDI' => 'Udinese',   'VEN' => 'Venezia',
+        ];
+
+        $updated  = 0;
+        $transferred = 0;
+        $notFound = 0;
+
+        DB::beginTransaction();
+        try {
+            foreach ($items as $item) {
+                $squadra = $codeMap[$item['team_short_code']] ?? null;
+                if (!$squadra) { $notFound++; continue; }
+
+                $titolare = (int) round(((int)$item['titolarita'] + (int)$item['continuita']) / 2);
+                $fi       = (int) $item['fanta_index'];
+
+                // Match esatto nome + squadra
+                $rows = FantaListone::where('nome', $item['display_name'])
+                    ->where('squadra', $squadra)
+                    ->get();
+
+                if ($rows->isNotEmpty()) {
+                    foreach ($rows as $player) {
+                        $player->fanta_index = $fi;
+                        $player->titolare    = $titolare;
+                        $player->save();
+                        $updated++;
+                    }
+                    continue;
+                }
+
+                // Fallback: match per solo nome (giocatore trasferito)
+                $byName = FantaListone::where('nome', $item['display_name'])->get();
+                if ($byName->count() === 1) {
+                    $byName->first()->update(['fanta_index' => $fi, 'titolare' => $titolare]);
+                    $transferred++;
+                } else {
+                    $notFound++;
+                }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return back()->with('error', 'Errore import fantagoat: ' . $e->getMessage());
+        }
+
+        return back()->with('success', "Fantagoat import: aggiornati {$updated}, trasferiti {$transferred}, non trovati {$notFound}.");
     }
 
 

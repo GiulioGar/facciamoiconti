@@ -19,7 +19,7 @@ class AppetibilityCalculator
     {
         $fvms = array_map(fn($p) => (float)($p['fvm'] ?? 0), $players);
 
-        // Selezioniamo solo i giocatori con presenze e stats complete
+        // Giocatori con presenze e stats complete
         $withPv = array_values(array_filter($players, fn($p) =>
             (int)($p['pv'] ?? 0) > 0 &&
             isset($p['fm']) && $p['fm'] !== null &&
@@ -27,8 +27,13 @@ class AppetibilityCalculator
         ));
         $fmVals = array_map(fn($p) => (float)$p['fm'], $withPv);
         $mvVals = array_map(fn($p) => (float)$p['mv'], $withPv);
-
         $avgPerf = $this->roleAvgPerf($withPv, $fmVals, $mvVals);
+
+        // Giocatori con fanta_index per calcolo percentile F
+        $withFi = array_values(array_filter($players, fn($p) =>
+            isset($p['fanta_index']) && $p['fanta_index'] !== null
+        ));
+        $fiVals = array_map(fn($p) => (float)$p['fanta_index'], $withFi);
 
         $results = [];
         foreach ($players as $p) {
@@ -40,11 +45,12 @@ class AppetibilityCalculator
             $hasFm   = $pv > 0
                 && isset($p['fm']) && $p['fm'] !== null
                 && isset($p['mv']) && $p['mv'] !== null;
+            $hasFi   = isset($p['fanta_index']) && $p['fanta_index'] !== null;
 
-            // A: percentile FVM nel ruolo
+            // A: percentile FVM nel ruolo (peso 0.25)
             $A = $this->percentileRank($fvm, $fvms);
 
-            // B: performance ponderata per affidabilità
+            // B: performance storica ponderata per affidabilità (peso 0.35)
             $rel = min(1.0, $pv / 20.0);
             if ($hasFm) {
                 $fmPct   = $this->percentileRank((float)$p['fm'], $fmVals);
@@ -52,15 +58,20 @@ class AppetibilityCalculator
                 $perfRaw = 0.80 * $fmPct + 0.20 * $mvPct;
             } else {
                 $perfRaw = $avgPerf;
-                $rel     = 0.0; // fallback puro alla media ruolo
+                $rel     = 0.0;
             }
             $B = $rel * $perfRaw + (1.0 - $rel) * $avgPerf;
+
+            // F: fanta_index percentile nel ruolo (peso 0.30); fallback 50 se assente
+            $F = $hasFi
+                ? $this->percentileRank((float)$p['fanta_index'], $fiVals)
+                : 50.0;
 
             // C: correzione manuale like/dislike, clampata a ±10
             $net = $like - $dislike;
             $C   = $this->clamp($net / 10.0, -1.0, 1.0) * 10.0;
 
-            $score          = $this->clamp(0.40 * $A + 0.45 * $B + $C, 0.0, 100.0);
+            $score           = $this->clamp(0.25 * $A + 0.35 * $B + 0.30 * $F + $C, 0.0, 100.0);
             $results[$extId] = round($score, 2);
         }
 
@@ -77,7 +88,7 @@ class AppetibilityCalculator
             $season = $this->latestSeason();
         }
 
-        $listone = FantaListone::select('external_id', 'ruolo', 'fvm', 'like', 'dislike')->get();
+        $listone = FantaListone::select('external_id', 'ruolo', 'fvm', 'like', 'dislike', 'fanta_index')->get();
         $stats   = FantaPlayerStats::where('season', $season)
             ->select('external_id', 'pv', 'mv', 'fm')
             ->get()
@@ -94,6 +105,7 @@ class AppetibilityCalculator
                 'pv'          => $st ? $st->pv : null,
                 'mv'          => $st ? $st->mv : null,
                 'fm'          => $st ? $st->fm : null,
+                'fanta_index' => $player->fanta_index,
             ];
         }
 
