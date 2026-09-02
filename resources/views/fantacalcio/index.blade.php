@@ -107,12 +107,12 @@
 
     <div class="card-body">
       <div class="row g-2 mb-3">
-        <div class="col-12 col-md-6">
+        <div class="col-12 col-md-4">
           <label for="searchName" class="form-label mb-1">Cerca per Nome</label>
           <input id="searchName" type="text" class="form-control" placeholder="Es. Lautaro, Buongiorno..." autocomplete="off">
         </div>
 
-        <div class="col-12 col-md-6">
+        <div class="col-12 col-md-4">
           <label for="role-classic" class="form-label mb-1">Ruolo</label>
           <select id="role-classic" class="form-select">
             <option value="" selected>Tutti i ruoli</option>
@@ -120,6 +120,18 @@
             <option value="D">Difensore (D)</option>
             <option value="C">Centrocampista (C)</option>
             <option value="A">Attaccante (A)</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-4">
+          <label for="filter-level" class="form-label mb-1">Level</label>
+          <select id="filter-level" class="form-select">
+            <option value="" selected>Tutti i level</option>
+            <option value="5">5 — TOP</option>
+            <option value="4">4 — Ottimo</option>
+            <option value="3">3 — Medio</option>
+            <option value="2">2 — Basso</option>
+            <option value="1">1 — Scarso</option>
           </select>
         </div>
       </div>
@@ -210,8 +222,9 @@
     ajax: {
       url: "{{ route('fantacalcio.listone.data') }}",
       data: function(d) {
-        d.name = $('#searchName').val() || '';
+        d.name        = $('#searchName').val() || '';
         d.role_classic = $('#role-classic').val() || '';
+        d.level        = $('#filter-level').val() || '';
       }
     },
     language: { url: "https://cdn.datatables.net/plug-ins/1.13.8/i18n/it-IT.json" },
@@ -273,6 +286,7 @@
 
   $('#searchName').on('keyup', debounce(() => table.ajax.reload(null, false), 300));
   $('#role-classic').on('change', () => table.ajax.reload(null, false));
+  $('#filter-level').on('change', () => table.ajax.reload(null, false));
 
   $('#listone-table').on('click', '.icon-asta', function(e) {
     e.stopPropagation();

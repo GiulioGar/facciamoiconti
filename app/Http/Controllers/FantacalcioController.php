@@ -342,6 +342,7 @@ public function listoneData(Request $request)
 
     $name        = trim((string) $request->get('name', ''));
     $roleClassic = strtoupper(trim((string) $request->get('role_classic', '')));
+    $levelFilter = (int) $request->get('level', 0);
 
     $query = \App\Models\FantaListone::query();
 
@@ -351,6 +352,10 @@ public function listoneData(Request $request)
 
     if (in_array($roleClassic, ['P', 'D', 'C', 'A'], true)) {
         $query->where('ruolo', $roleClassic);
+    }
+
+    if ($levelFilter >= 1 && $levelFilter <= 5) {
+        $query->where('level', $levelFilter);
     }
 
     $likesSigned    = "CAST(COALESCE(fanta_listone.`like`, 0) AS SIGNED)";
