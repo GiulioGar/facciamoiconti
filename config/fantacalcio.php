@@ -1,6 +1,41 @@
 <?php
 
 return [
+    'status_thresholds' => [
+        'purchase_delta' => [
+            'opportunistic_max' => -0.05,
+            'in_piano_max'      =>  0.12,
+            'aggressivo_max'    =>  0.28,
+            'compresso_max'     =>  0.48,
+        ],
+        'future_compression' => [
+            'opportunistic_max' =>  0.00,
+            'in_piano_max'      =>  0.10,
+            'aggressivo_max'    =>  0.22,
+            'compresso_max'     =>  0.38,
+        ],
+        'worst_key_slot' => [
+            'no_override_min' => 0.75,
+            'compresso_min'   => 0.60,
+        ],
+        'goalkeeper' => [
+            'opportunistic_max' => 0.80,
+            'in_piano_max'      => 1.20,
+        ],
+    ],
+
+    'status_weights' => [
+        'A' => 3,
+        'C' => 2,
+        'D' => 1,
+    ],
+
+    'key_slots' => [
+        'D' => ['D1', 'D2'],
+        'C' => ['C1', 'C2', 'C3'],
+        'A' => ['A1', 'A2', 'A3'],
+    ],
+
     'role_percentages' => [
         'D' => 0.09,
         'C' => 0.30,

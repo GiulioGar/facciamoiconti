@@ -18,5 +18,12 @@ class FantaQuotazione extends Model
         'nome',
         'squadra',
         'fvm',
+        'quota_a',
+        'quota_i',
+        'diff_quota',
+        'quota_a_m',
+        'quota_i_m',
+        'diff_quota_m',
+        'fvm_m',
     ];
 }

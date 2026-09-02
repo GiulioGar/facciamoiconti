@@ -39,17 +39,18 @@
 
   <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-      <span><i class="bi bi-upload me-2"></i>Importa quotazioni da CSV</span>
+      <span><i class="bi bi-upload me-2"></i>Importa quotazioni</span>
       <small class="text-muted">Le importazioni sovrascrivono completamente la tabella</small>
     </div>
     <div class="card-body">
       <form action="{{ route('fantacalcio.quote.import') }}" method="POST" enctype="multipart/form-data" class="row g-3">
         @csrf
         <div class="col-12 col-md-8">
-          <label for="csv" class="form-label">File CSV</label>
-          <input type="file" class="form-control" id="csv" name="csv" accept=".csv,text/csv" required>
+          <label for="csv" class="form-label">File CSV o XLSX</label>
+          <input type="file" class="form-control" id="csv" name="csv" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
           <div class="form-text">
-            Intestazioni richieste: <code>Id,R,RM,Nome,Squadra,FVM</code> — separatore virgola <em>o</em> punto e virgola.
+            <strong>XLSX</strong> (Quotazioni_Fantacalcio_Stagione_*.xlsx) — importa tutte le colonne: Qt.A, Qt.I, Diff., FVM, FVM M e varianti mantra.<br>
+            <strong>CSV</strong> — intestazioni richieste: <code>Id,R,RM,Nome,Squadra,FVM</code> — separatore virgola <em>o</em> punto e virgola.
           </div>
         </div>
         <div class="col-12 col-md-4 d-flex align-items-end">

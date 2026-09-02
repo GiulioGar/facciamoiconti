@@ -9,6 +9,9 @@ use App\Models\FantaListone;
 use App\Models\FantaRosa;
 use App\Models\FantaBudgetState;
 use App\Services\Fantacalcio\RosaBudgetCalculator;
+use App\Services\Fantacalcio\RosaStatusEvaluator;
+use App\Services\Fantacalcio\AppetibilityCalculator;
+use App\Models\FantaPlayerStats;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -78,69 +81,31 @@ class FantacalcioController extends Controller
         return view('fantacalcio.quote');
     }
 
-    // --- IMPORT CSV per fanta_quotazione ---
+    // --- IMPORT CSV/XLSX per fanta_quotazione ---
     public function quoteImport(Request $request)
     {
         $request->validate([
-            'csv' => ['required', 'file', 'mimes:csv,txt', 'max:5120'],
+            'csv' => ['required', 'file', 'mimes:csv,txt,xlsx', 'max:10240'],
         ]);
 
-        $file = $request->file('csv');
-        $path = $file->getRealPath();
+        $file      = $request->file('csv');
+        $path      = $file->getRealPath();
+        $extension = strtolower($file->getClientOriginalExtension());
 
-        $handle = fopen($path, 'r');
-        if (!$handle) {
+        $rows = $extension === 'xlsx'
+            ? $this->parseQuoteXlsx($path)
+            : $this->parseQuoteCsv($path);
+
+        if ($rows === null) {
             return back()->with('error', 'Impossibile aprire il file.');
         }
 
-        $firstLine = fgets($handle);
-        rewind($handle);
-        $delimiter = (substr_count($firstLine, ';') > substr_count($firstLine, ',')) ? ';' : ',';
-
-        // Gestione BOM
-        $bom = pack('CCC', 0xEF, 0xBB, 0xBF);
-        if (strncmp($firstLine, $bom, 3) === 0) {
-            fseek($handle, 3);
+        if (is_string($rows)) {
+            return back()->with('error', $rows);
         }
-
-        $header = fgetcsv($handle, 0, $delimiter);
-        if (!$header) {
-            fclose($handle);
-            return back()->with('error', 'Header CSV mancante o non valido.');
-        }
-
-        $header = array_map(fn($h) => strtolower(trim($h)), $header);
-
-        $required = ['id','r','rm','nome','squadra','fvm'];
-        foreach ($required as $col) {
-            if (!in_array($col, $header)) {
-                fclose($handle);
-                return back()->with('error', "Colonna richiesta mancante: {$col}");
-            }
-        }
-
-        $idx = array_flip($header);
-        $rows = [];
-        $convert = fn($v) => trim(mb_convert_encoding($v, 'UTF-8', 'UTF-8,ISO-8859-1,Windows-1252'));
-
-        while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
-            if (count($data) < count($header)) continue;
-
-            $rows[] = [
-                'external_id'  => (int) $convert($data[$idx['id']]),
-                'ruolo'        => $convert($data[$idx['r']]),
-                'ruolo_esteso' => $convert($data[$idx['rm']]),
-                'nome'         => $convert($data[$idx['nome']]),
-                'squadra'      => $convert($data[$idx['squadra']]),
-                'fvm'          => (int) $convert($data[$idx['fvm']]),
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ];
-        }
-        fclose($handle);
 
         if (empty($rows)) {
-            return back()->with('error', 'Nessun dato valido trovato nel CSV.');
+            return back()->with('error', 'Nessun dato valido trovato nel file.');
         }
 
         DB::beginTransaction();
@@ -156,6 +121,152 @@ class FantacalcioController extends Controller
         }
 
         return back()->with('success', 'Import completato. Righe inserite: ' . count($rows));
+    }
+
+    private function parseQuoteXlsx(string $path)
+    {
+        $colMap = [
+            'id'       => 'external_id',
+            'r'        => 'ruolo',
+            'rm'       => 'ruolo_esteso',
+            'nome'     => 'nome',
+            'squadra'  => 'squadra',
+            'qt.a'     => 'quota_a',
+            'qt.i'     => 'quota_i',
+            'diff.'    => 'diff_quota',
+            'qt.a m'   => 'quota_a_m',
+            'qt.i m'   => 'quota_i_m',
+            'diff.m'   => 'diff_quota_m',
+            'fvm'      => 'fvm',
+            'fvm m'    => 'fvm_m',
+        ];
+        $required = ['external_id', 'ruolo', 'ruolo_esteso', 'nome', 'squadra', 'fvm'];
+
+        $reader = \OpenSpout\Reader\Common\Creator\ReaderFactory::createFromType('xlsx');
+        $reader->open($path);
+
+        $rows    = [];
+        $idx     = [];
+        $rowNum  = 0;
+
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $rowNum++;
+                $cells = [];
+                foreach ($row->getCells() as $cell) {
+                    $v = $cell->getValue();
+                    $cells[] = is_string($v) ? trim($v) : $v;
+                }
+
+                if ($rowNum === 1) continue; // riga titolo
+
+                if ($rowNum === 2) {
+                    $header = array_map(fn($v) => strtolower(trim((string) $v)), $cells);
+                    foreach ($header as $pos => $label) {
+                        if (isset($colMap[$label])) {
+                            $idx[$colMap[$label]] = $pos;
+                        }
+                    }
+                    foreach ($required as $field) {
+                        if (!isset($idx[$field])) {
+                            $reader->close();
+                            return "Colonna richiesta mancante nell'XLSX: {$field}";
+                        }
+                    }
+                    continue;
+                }
+
+                $extId = (int) (float) ($cells[$idx['external_id']] ?? 0);
+                if ($extId <= 0) continue;
+
+                $intCol = fn(string $field) => isset($idx[$field]) && isset($cells[$idx[$field]])
+                    ? (int) (float) $cells[$idx[$field]]
+                    : null;
+
+                $rows[] = [
+                    'external_id'  => $extId,
+                    'ruolo'        => (string) ($cells[$idx['ruolo']] ?? ''),
+                    'ruolo_esteso' => (string) ($cells[$idx['ruolo_esteso']] ?? ''),
+                    'nome'         => (string) ($cells[$idx['nome']] ?? ''),
+                    'squadra'      => (string) ($cells[$idx['squadra']] ?? ''),
+                    'fvm'          => $intCol('fvm') ?? 0,
+                    'quota_a'      => $intCol('quota_a'),
+                    'quota_i'      => $intCol('quota_i'),
+                    'diff_quota'   => $intCol('diff_quota'),
+                    'quota_a_m'    => $intCol('quota_a_m'),
+                    'quota_i_m'    => $intCol('quota_i_m'),
+                    'diff_quota_m' => $intCol('diff_quota_m'),
+                    'fvm_m'        => $intCol('fvm_m'),
+                    'created_at'   => now(),
+                    'updated_at'   => now(),
+                ];
+            }
+            break; // solo foglio "Tutti"
+        }
+
+        $reader->close();
+        return $rows;
+    }
+
+    private function parseQuoteCsv(string $path)
+    {
+        $handle = fopen($path, 'r');
+        if (!$handle) return null;
+
+        $firstLine = fgets($handle);
+        rewind($handle);
+        $delimiter = (substr_count($firstLine, ';') > substr_count($firstLine, ',')) ? ';' : ',';
+
+        $bom = pack('CCC', 0xEF, 0xBB, 0xBF);
+        if (strncmp($firstLine, $bom, 3) === 0) {
+            fseek($handle, 3);
+        }
+
+        $header = fgetcsv($handle, 0, $delimiter);
+        if (!$header) {
+            fclose($handle);
+            return 'Header CSV mancante o non valido.';
+        }
+
+        $header = array_map(fn($h) => strtolower(trim($h)), $header);
+        $required = ['id', 'r', 'rm', 'nome', 'squadra', 'fvm'];
+        foreach ($required as $col) {
+            if (!in_array($col, $header)) {
+                fclose($handle);
+                return "Colonna richiesta mancante: {$col}";
+            }
+        }
+
+        $idx     = array_flip($header);
+        $rows    = [];
+        $convert = fn($v) => trim(mb_convert_encoding($v, 'UTF-8', 'UTF-8,ISO-8859-1,Windows-1252'));
+        $optInt  = fn($data, $key) => isset($idx[$key]) && isset($data[$idx[$key]])
+            ? (int) $convert($data[$idx[$key]])
+            : null;
+
+        while (($data = fgetcsv($handle, 0, $delimiter)) !== false) {
+            if (count($data) < count($header)) continue;
+
+            $rows[] = [
+                'external_id'  => (int) $convert($data[$idx['id']]),
+                'ruolo'        => $convert($data[$idx['r']]),
+                'ruolo_esteso' => $convert($data[$idx['rm']]),
+                'nome'         => $convert($data[$idx['nome']]),
+                'squadra'      => $convert($data[$idx['squadra']]),
+                'fvm'          => (int) $convert($data[$idx['fvm']]),
+                'quota_a'      => $optInt($data, 'qt.a'),
+                'quota_i'      => $optInt($data, 'qt.i'),
+                'diff_quota'   => $optInt($data, 'diff.'),
+                'quota_a_m'    => $optInt($data, 'qt.a m'),
+                'quota_i_m'    => $optInt($data, 'qt.i m'),
+                'diff_quota_m' => $optInt($data, 'diff.m'),
+                'fvm_m'        => $optInt($data, 'fvm m'),
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ];
+        }
+        fclose($handle);
+        return $rows;
     }
 
     // --- SYNC listone da fanta_quotazione ---
@@ -174,7 +285,11 @@ class FantacalcioController extends Controller
             ARRAY_FILTER_USE_BOTH
         );
 
-        $rows = FantaQuotazione::select('external_id','ruolo','ruolo_esteso','nome','squadra','fvm')
+        $rows = FantaQuotazione::select(
+                'external_id','ruolo','ruolo_esteso','nome','squadra',
+                'fvm','quota_a','quota_i','diff_quota',
+                'quota_a_m','quota_i_m','diff_quota_m','fvm_m'
+            )
             ->get()
             ->map(fn($r) => [
                 'external_id'  => $r->external_id,
@@ -183,6 +298,15 @@ class FantacalcioController extends Controller
                 'nome'         => $r->nome,
                 'squadra'      => $r->squadra,
                 'fvm'          => $r->fvm,
+                'quota_a'      => $r->quota_a,
+                'quota_i'      => $r->quota_i,
+                'diff_quota'   => $r->diff_quota,
+                'quota_a_m'    => $r->quota_a_m,
+                'quota_i_m'    => $r->quota_i_m,
+                'diff_quota_m' => $r->diff_quota_m,
+                'fvm_m'        => $r->fvm_m,
+                'like'         => 0,
+                'dislike'      => 0,
                 'created_at'   => now(),
                 'updated_at'   => now(),
             ])
@@ -190,11 +314,11 @@ class FantacalcioController extends Controller
 
         DB::beginTransaction();
         try {
-            // Se non esiste, inserisce tutta la riga; se esiste, aggiorna SOLO fvm + updated_at
+            // Nuovi: inserisce tutta la riga. Esistenti: aggiorna quote + fvm + azzera like/dislike stagione precedente
             DB::table('fanta_listone')->upsert(
                 $rows,
                 ['external_id'],
-                ['fvm', 'updated_at']
+                ['fvm','quota_a','quota_i','diff_quota','quota_a_m','quota_i_m','diff_quota_m','fvm_m','like','dislike','updated_at']
             );
             DB::commit();
         } catch (\Throwable $e) {
@@ -392,6 +516,9 @@ public function rosa()
         ->calculate($teamBudget, $slots, $assignedByIndex);
     $slots = $budgetResult['slots'];
 
+    $strategyStatus = app(RosaStatusEvaluator::class)
+        ->evaluate($teamBudget, $slots, $budgetResult, $assignedByIndex);
+
     $team = [
         'name'      => $teamName,
         'budget'    => $teamBudget,
@@ -404,7 +531,7 @@ public function rosa()
         'roles' => $budgetResult['roles'],
     ];
 
-    return view('fantacalcio.rosa', compact('team', 'slots', 'assignedByIndex'));
+    return view('fantacalcio.rosa', compact('team', 'slots', 'assignedByIndex', 'strategyStatus'));
 }
 
 public function rosaPlayers(Request $request)
@@ -943,6 +1070,123 @@ private function loadAssignedByIndex(): array
     return $assignedByIndex;
 }
 
+    // --- IMPORT XLSX statistiche storiche ---
+    public function statsImport(Request $request)
+    {
+        $request->validate([
+            'xlsx'   => ['required', 'file', 'mimes:xlsx', 'max:20480'],
+            'season' => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
+        ]);
+
+        $path   = $request->file('xlsx')->getRealPath();
+        $season = $request->input('season');
+
+        $colMap = [
+            'id'  => 'external_id',
+            'pv'  => 'pv',
+            'mv'  => 'mv',
+            'fm'  => 'fm',
+            'gf'  => 'gf',
+            'gs'  => 'gs',
+            'rp'  => 'rp',
+            'rc'  => 'rc',
+            'r+'  => 'rplus',
+            'r-'  => 'rminus',
+            'ass' => 'ass',
+            'amm' => 'amm',
+            'esp' => 'esp',
+            'au'  => 'au',
+        ];
+
+        $reader  = \OpenSpout\Reader\Common\Creator\ReaderFactory::createFromType('xlsx');
+        $reader->open($path);
+
+        $rows    = [];
+        $idx     = [];
+        $rowNum  = 0;
+        $toFloat = fn($v) => is_float($v) || is_int($v)
+            ? (float) $v
+            : (float) str_replace(',', '.', (string) $v);
+
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $rowNum++;
+                $cells = [];
+                foreach ($row->getCells() as $cell) {
+                    $v = $cell->getValue();
+                    $cells[] = is_string($v) ? trim($v) : $v;
+                }
+
+                if ($rowNum === 1) continue; // riga titolo
+
+                if ($rowNum === 2) {
+                    foreach ($cells as $pos => $label) {
+                        $key = strtolower(trim((string) $label));
+                        if (isset($colMap[$key])) {
+                            $idx[$colMap[$key]] = $pos;
+                        }
+                    }
+                    if (!isset($idx['external_id'])) {
+                        $reader->close();
+                        return back()->with('error', "Colonna 'Id' non trovata nel file statistiche.");
+                    }
+                    continue;
+                }
+
+                $extId = (int) $toFloat($cells[$idx['external_id']] ?? 0);
+                if ($extId <= 0) continue;
+
+                $r = ['external_id' => $extId, 'season' => $season];
+                foreach (['pv', 'gf', 'gs', 'rp', 'rc', 'rplus', 'rminus', 'ass', 'amm', 'esp', 'au'] as $col) {
+                    $r[$col] = isset($idx[$col]) ? (int) $toFloat($cells[$idx[$col]] ?? 0) : null;
+                }
+                foreach (['mv', 'fm'] as $col) {
+                    $r[$col] = isset($idx[$col]) ? $toFloat($cells[$idx[$col]] ?? 0) : null;
+                }
+                $r['created_at'] = now();
+                $r['updated_at'] = now();
+                $rows[] = $r;
+            }
+            break;
+        }
+        $reader->close();
+
+        if (empty($rows)) {
+            return back()->with('error', 'Nessun dato trovato nel file statistiche.');
+        }
+
+        DB::beginTransaction();
+        try {
+            foreach (array_chunk($rows, 500) as $chunk) {
+                FantaPlayerStats::upsert(
+                    $chunk,
+                    ['external_id', 'season'],
+                    ['pv', 'mv', 'fm', 'gf', 'gs', 'rp', 'rc', 'rplus', 'rminus', 'ass', 'amm', 'esp', 'au', 'updated_at']
+                );
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return back()->with('error', 'Errore import statistiche: ' . $e->getMessage());
+        }
+
+        return back()->with('success', "Statistiche importate: " . count($rows) . " giocatori (stagione {$season}).");
+    }
+
+    // --- RICALCOLO SCORE appetibilità (Formula C) ---
+    public function scoreRecalculate(Request $request)
+    {
+        $season = $request->input('season') ?: null;
+
+        try {
+            $calculator = new AppetibilityCalculator();
+            $count = $calculator->recalculate($season);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Errore ricalcolo score: ' . $e->getMessage());
+        }
+
+        return back()->with('success', "Score aggiornato per {$count} giocatori.");
+    }
 
 
 }

@@ -18,6 +18,14 @@ protected $fillable = [
     'nome',
     'squadra',
     'fvm',
+    'quota_a',
+    'quota_i',
+    'diff_quota',
+    'quota_a_m',
+    'quota_i_m',
+    'diff_quota_m',
+    'fvm_m',
+    'score',
     'stato',
     'like',
     'dislike',
@@ -28,8 +36,9 @@ protected $fillable = [
 ];
 
     protected $casts = [
-        'level' => 'integer',
+        'level'               => 'integer',
         'recommended_credits' => 'integer',
+        'score'               => 'decimal:2',
     ];
 
 }

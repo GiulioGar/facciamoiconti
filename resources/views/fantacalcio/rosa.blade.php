@@ -124,6 +124,22 @@
       </div>
 
       {{-- Riga 2: Reparti --}}
+      @php
+        $stratBadgeClass = [
+          'OPPORTUNISTICO'    => 'bg-info text-white',
+          'IN_PIANO'          => 'bg-success text-white',
+          'AGGRESSIVO'        => 'bg-warning text-dark',
+          'COMPRESSO'         => 'bg-dark text-white',
+          'RISCHIO_STRUTTURA' => 'bg-danger text-white',
+        ];
+        $stratBadgeLabel = [
+          'OPPORTUNISTICO'    => 'Opportunistico',
+          'IN_PIANO'          => 'In piano',
+          'AGGRESSIVO'        => 'Aggressivo',
+          'COMPRESSO'         => 'Compresso',
+          'RISCHIO_STRUTTURA' => 'Rischio struttura',
+        ];
+      @endphp
       <div class="roles-row">
         @foreach (['P' => 'Portieri', 'D' => 'Difesa', 'C' => 'Centrocampo', 'A' => 'Attacco'] as $roleToken => $roleName)
           @php
@@ -154,9 +170,55 @@
         @endforeach
       </div>
 
+      {{-- Riga 3: Stati strategici --}}
+      @php
+        $stratItems = [
+          'Globale' => $strategyStatus['global_status']            ?? null,
+          'P'       => $strategyStatus['goalkeeper']['status']     ?? null,
+          'D'       => $strategyStatus['roles']['D']['status']     ?? null,
+          'C'       => $strategyStatus['roles']['C']['status']     ?? null,
+          'A'       => $strategyStatus['roles']['A']['status']     ?? null,
+        ];
+        $stratGlobalDesc = [
+          'OPPORTUNISTICO'    => 'Hai accumulato margine rispetto al piano.',
+          'IN_PIANO'          => 'La costruzione della rosa è coerente con il piano.',
+          'AGGRESSIVO'        => 'Stai spendendo sopra piano, ma la struttura resta sostenibile.',
+          'COMPRESSO'         => 'Gli ultimi acquisti stanno comprimendo gli slot ancora aperti.',
+          'RISCHIO_STRUTTURA' => 'La struttura della rosa sta diventando fragile.',
+        ];
+        $stratBadgeTitle = [
+          'OPPORTUNISTICO'    => 'Spesa sotto piano, margine disponibile.',
+          'IN_PIANO'          => 'Reparto coerente con il piano.',
+          'AGGRESSIVO'        => 'Spesa sopra piano, ma ancora sostenibile.',
+          'COMPRESSO'         => 'Gli slot futuri sono già ridotti.',
+          'RISCHIO_STRUTTURA' => 'La struttura del reparto è fortemente compromessa.',
+        ];
+      @endphp
+      <div class="mt-3 pt-2 border-top d-flex flex-wrap align-items-center gap-3">
+        <span class="metric-label">Stato strategico</span>
+        @foreach ($stratItems as $itemLabel => $itemStatus)
+          <div class="d-flex align-items-center gap-1">
+            <span class="metric-label">{{ $itemLabel }}</span>
+            @if ($itemStatus)
+              <span class="badge rounded-pill {{ $stratBadgeClass[$itemStatus] ?? 'bg-secondary text-white' }}"
+                title="{{ $stratBadgeTitle[$itemStatus] ?? '' }}">
+                {{ $stratBadgeLabel[$itemStatus] ?? $itemStatus }}
+              </span>
+            @else
+              <span class="text-muted" style="font-size:.82rem;">&mdash;</span>
+            @endif
+          </div>
+        @endforeach
+      </div>
+      @if (!empty($strategyStatus['global_status']) && isset($stratGlobalDesc[$strategyStatus['global_status']]))
+        <div class="mt-1">
+          <small class="text-muted">{{ $stratGlobalDesc[$strategyStatus['global_status']] }}</small>
+        </div>
+      @endif
+
     </div>
 
-    {{-- Riga 3: Azioni (fascia separata, leggera) --}}
+    {{-- Riga 4: Azioni (fascia separata, leggera) --}}
     <div class="card-footer bg-transparent border-top py-2 actions-strip">
       <div class="d-flex flex-wrap gap-3 align-items-end">
         <form method="POST" action="{{ route('fantacalcio.rosa.budget') }}" class="d-flex gap-2 align-items-end">
