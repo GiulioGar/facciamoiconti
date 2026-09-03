@@ -441,30 +441,51 @@ public function listoneData(Request $request)
     ]);
 }
 
-/**
- * Incrementa like
- */
 public function incrementLike($id)
 {
     $p = FantaListone::findOrFail($id);
-    // limiti di sicurezza opzionali: max 1000
     if ($p->like >= 1000) {
         return response()->json(['ok' => false, 'message' => 'Limite massimo raggiunto'], 422);
     }
+    $oldLike = (int) $p->like; $oldDislike = (int) $p->dislike;
     $p->increment('like');
+    $this->refreshScore($p, $oldLike, $oldDislike);
     return response()->json(['ok' => true, 'like' => (int) $p->like]);
 }
 
-/**
- * Incrementa dislike
- */
+public function decrementLike($id)
+{
+    $p = FantaListone::findOrFail($id);
+    if ($p->like <= 0) {
+        return response()->json(['ok' => false, 'message' => 'Il valore non può scendere sotto zero'], 422);
+    }
+    $oldLike = (int) $p->like; $oldDislike = (int) $p->dislike;
+    $p->decrement('like');
+    $this->refreshScore($p, $oldLike, $oldDislike);
+    return response()->json(['ok' => true, 'like' => (int) $p->like]);
+}
+
 public function incrementDislike($id)
 {
     $p = FantaListone::findOrFail($id);
     if ($p->dislike >= 1000) {
         return response()->json(['ok' => false, 'message' => 'Limite massimo raggiunto'], 422);
     }
+    $oldLike = (int) $p->like; $oldDislike = (int) $p->dislike;
     $p->increment('dislike');
+    $this->refreshScore($p, $oldLike, $oldDislike);
+    return response()->json(['ok' => true, 'dislike' => (int) $p->dislike]);
+}
+
+public function decrementDislike($id)
+{
+    $p = FantaListone::findOrFail($id);
+    if ($p->dislike <= 0) {
+        return response()->json(['ok' => false, 'message' => 'Il valore non può scendere sotto zero'], 422);
+    }
+    $oldLike = (int) $p->like; $oldDislike = (int) $p->dislike;
+    $p->decrement('dislike');
+    $this->refreshScore($p, $oldLike, $oldDislike);
     return response()->json(['ok' => true, 'dislike' => (int) $p->dislike]);
 }
 
@@ -480,24 +501,18 @@ public function toggleStato($id)
     return response()->json(['ok' => true, 'stato' => (int)$p->stato]);
 }
 
-public function decrementLike($id)
+// Ricalcola la componente C dello score quando like/dislike cambiano.
+// Non tocca score se è null (giocatore senza statistiche).
+private function refreshScore(FantaListone $p, int $oldLike, int $oldDislike): void
 {
-    $p = \App\Models\FantaListone::findOrFail($id);
-    if ($p->like <= 0) {
-        return response()->json(['ok' => false, 'message' => 'Il valore non puÃ² scendere sotto zero'], 422);
-    }
-    $p->decrement('like');
-    return response()->json(['ok' => true, 'like' => (int)$p->like]);
-}
+    if ($p->score === null) return;
 
-public function decrementDislike($id)
-{
-    $p = \App\Models\FantaListone::findOrFail($id);
-    if ($p->dislike <= 0) {
-        return response()->json(['ok' => false, 'message' => 'Il valore non puÃ² scendere sotto zero'], 422);
-    }
-    $p->decrement('dislike');
-    return response()->json(['ok' => true, 'dislike' => (int)$p->dislike]);
+    $cOld     = max(-1.0, min(1.0, ($oldLike - $oldDislike) / 10.0)) * 10.0;
+    $cNew     = max(-1.0, min(1.0, ((int) $p->like - (int) $p->dislike) / 10.0)) * 10.0;
+    $newScore = round(max(0.0, min(100.0, (float) $p->score - $cOld + $cNew)), 2);
+
+    $p->score = $newScore;
+    $p->save();
 }
 
 
