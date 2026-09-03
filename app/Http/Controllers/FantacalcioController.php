@@ -320,7 +320,7 @@ class FantacalcioController extends Controller
             DB::table('fanta_listone')->upsert(
                 $rows,
                 ['external_id'],
-                ['fvm','quota_a','quota_i','diff_quota','quota_a_m','quota_i_m','diff_quota_m','fvm_m','like','dislike','updated_at']
+                ['nome','ruolo','ruolo_esteso','squadra','fvm','quota_a','quota_i','diff_quota','quota_a_m','quota_i_m','diff_quota_m','fvm_m','like','dislike','updated_at']
             );
             // Rimuove giocatori non piu' presenti nelle quotazioni correnti
             $removed = FantaListone::whereNotIn('external_id', $validIds)->count();
