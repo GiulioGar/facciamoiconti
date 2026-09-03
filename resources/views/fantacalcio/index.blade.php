@@ -148,6 +148,7 @@
               <th class="text-center">Titolare</th>
               <th class="text-center">Score</th>
               <th class="text-center">Level</th>
+              <th class="text-center">IA</th>
               <th class="text-center">Like</th>
               <th class="text-center">Dislike</th>
             </tr>
@@ -205,7 +206,7 @@
     `;
   }
 
-  const ROW_ID_IDX = 10;
+  const ROW_ID_IDX = 11;
 
   const table = $('#listone-table').DataTable({
     processing: true,
@@ -216,7 +217,7 @@
     pageLength: 25,
     order: [
       [6, 'desc'],
-      [8, 'desc'],
+      [9, 'desc'],
       [2, 'asc']
     ],
     ajax: {
@@ -229,25 +230,26 @@
     },
     language: { url: "https://cdn.datatables.net/plug-ins/1.13.8/i18n/it-IT.json" },
     columns: [
-      { data: 0, className: 'text-center', orderable: false, render: (d, type, row) => renderAsta(d, row) },
+      { data: 0,  className: 'text-center', orderable: false, render: (d, type, row) => renderAsta(d, row) },
       { data: 1 },
       { data: 2 },
       { data: 3 },
-      { data: 4, className: 'text-end' },
-      { data: 5, className: 'text-center', orderable: false, render: (d, type, row) => renderTitolarePill(d, row) },
-      { data: 6, className: 'text-center fw-semibold', render: d => d !== null ? d : '-' },
-      { data: 7, className: 'text-center', render: (d, type, row) => {
+      { data: 4,  className: 'text-end' },
+      { data: 5,  className: 'text-center', orderable: false, render: (d, type, row) => renderTitolarePill(d, row) },
+      { data: 6,  className: 'text-center fw-semibold', render: d => d !== null ? d : '-' },
+      { data: 7,  className: 'text-center', render: (d, type, row) => {
           const lvl = parseInt(d ?? 3, 10);
           const id = row[ROW_ID_IDX];
           const label = {1:'Scarso',2:'Basso',3:'Medio',4:'Ottimo',5:'TOP'}[lvl] || 'Medio';
           const cls = {1:'secondary',2:'secondary',3:'info',4:'primary',5:'success'}[lvl] || 'info';
           return `<span class="badge bg-${cls} cell-level-edit" data-id="${id}" data-level="${lvl}" title="Clic per modificare">${lvl} - ${label}</span>`;
       }},
-      { data: 8, className: 'text-center', orderable: false, render: (d, type, row) => {
+      { data: 8,  className: 'text-center fw-semibold', render: d => d !== null ? d : 'NV' },
+      { data: 9,  className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-like" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-up me-1"></i><strong>${d}</strong></span>`;
       }},
-      { data: 9, className: 'text-center', orderable: false, render: (d, type, row) => {
+      { data: 10, className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-dislike" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-down me-1"></i><strong>${d}</strong></span>`;
       }},
@@ -274,7 +276,7 @@
     },
     columnDefs: [
       { responsivePriority: 1,   targets: [2, 6, 7] },
-      { responsivePriority: 2,   targets: [0, 1, 8, 9] },
+      { responsivePriority: 2,   targets: [0, 1, 8, 9, 10] },
       { responsivePriority: 50,  targets: [3, 5] },
       { responsivePriority: 100, targets: [4] }
     ],

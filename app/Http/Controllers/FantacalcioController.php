@@ -366,16 +366,17 @@ public function listoneData(Request $request)
     $order           = $request->input('order', []);
 
     $columns = [
-        0 => 'stato',
-        1 => 'ruolo',
-        2 => 'nome',
-        3 => 'squadra',
-        4 => 'fvm',
-        5 => 'titolare',
-        6 => 'score',
-        7 => 'level',
-        8 => DB::raw($likesSigned),
-        9 => DB::raw($dislikesSigned),
+        0  => 'stato',
+        1  => 'ruolo',
+        2  => 'nome',
+        3  => 'squadra',
+        4  => 'fvm',
+        5  => 'titolare',
+        6  => 'score',
+        7  => 'level',
+        8  => 'ia',
+        9  => DB::raw($likesSigned),
+        10 => DB::raw($dislikesSigned),
     ];
 
     if (!empty($order)) {
@@ -411,22 +412,24 @@ public function listoneData(Request $request)
             DB::raw('`dislike` as dislikes'),
             'score',
             'level',
+            'ia',
         ])
         ->get();
 
     $data = $rows->map(function ($r) {
         return [
-            (int) $r->stato,                                                          // 0 - Asta
-            $r->ruolo,                                                                // 1 - Ruolo
-            $r->nome,                                                                 // 2 - Nome
-            $r->squadra,                                                              // 3 - Squadra
-            (string) (int) round($r->fvm),                                            // 4 - FVM
-            $r->titolare === null ? null : (int) $r->titolare,                        // 5 - Titolare
-            $r->score !== null ? number_format((float) $r->score, 2, '.', '') : null, // 6 - Score
-            (int) ($r->level ?? 3),                                                   // 7 - Level
-            (int) $r->likes,                                                          // 8 - Like
-            (int) $r->dislikes,                                                       // 9 - Dislike
-            (int) $r->id,                                                             // 10 - hidden id
+            (int) $r->stato,                                                          // 0  - Asta
+            $r->ruolo,                                                                // 1  - Ruolo
+            $r->nome,                                                                 // 2  - Nome
+            $r->squadra,                                                              // 3  - Squadra
+            (string) (int) round($r->fvm),                                            // 4  - FVM
+            $r->titolare === null ? null : (int) $r->titolare,                        // 5  - Titolare
+            $r->score !== null ? number_format((float) $r->score, 2, '.', '') : null, // 6  - Score
+            (int) ($r->level ?? 3),                                                   // 7  - Level
+            $r->ia !== null ? (int) $r->ia : null,                                    // 8  - IA
+            (int) $r->likes,                                                          // 9  - Like
+            (int) $r->dislikes,                                                       // 10 - Dislike
+            (int) $r->id,                                                             // 11 - hidden id
         ];
     });
 

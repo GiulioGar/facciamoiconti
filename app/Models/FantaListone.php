@@ -27,6 +27,10 @@ protected $fillable = [
     'fvm_m',
     'score',
     'fanta_index',
+    'ia',
+    'ia_confidence',
+    'ia_status',
+    'ia_sources',
     'stato',
     'like',
     'dislike',
@@ -41,6 +45,9 @@ protected $fillable = [
         'recommended_credits' => 'integer',
         'score'               => 'decimal:2',
         'fanta_index'         => 'integer',
+        'ia'                  => 'integer',
+        'ia_confidence'       => 'integer',
+        'ia_sources'          => 'integer',
     ];
 
 }
