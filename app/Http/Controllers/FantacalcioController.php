@@ -1250,8 +1250,9 @@ private function loadAssignedByIndex(): array
 
                 if ($rows->isNotEmpty()) {
                     foreach ($rows as $player) {
-                        $player->fanta_index = $fi;
-                        $player->titolare    = $titolare;
+                        $player->fanta_index     = $fi;
+                        $player->titolare        = $titolare;
+                        $player->titolare_goat   = $titolare;
                         $player->save();
                         $updated++;
                     }
@@ -1261,7 +1262,7 @@ private function loadAssignedByIndex(): array
                 // Fallback: match per solo nome (giocatore trasferito)
                 $byName = FantaListone::where('nome', $item['display_name'])->get();
                 if ($byName->count() === 1) {
-                    $byName->first()->update(['fanta_index' => $fi, 'titolare' => $titolare]);
+                    $byName->first()->update(['fanta_index' => $fi, 'titolare' => $titolare, 'titolare_goat' => $titolare]);
                     $transferred++;
                 } else {
                     $notFound++;
@@ -1296,7 +1297,7 @@ private function loadAssignedByIndex(): array
 
         $data = array_slice($rows, 1);
 
-        $listone = FantaListone::select(['id', 'external_id', 'titolare'])
+        $listone = FantaListone::select(['id', 'external_id', 'titolare_goat', 'titolare'])
             ->get()
             ->keyBy('external_id');
 
@@ -1307,23 +1308,28 @@ private function loadAssignedByIndex(): array
         DB::beginTransaction();
         try {
             foreach ($data as $row) {
-                $extId   = isset($row[0]) && $row[0] !== '' ? (int) $row[0] : null;
-                $titRaw  = isset($row[5]) && $row[5] !== '' ? (int) $row[5] : null;
+                $extId     = isset($row[0]) && $row[0] !== '' ? (int) $row[0] : null;
+                $titRaw    = isset($row[5]) && $row[5] !== '' ? (int) $row[5] : null;
                 $fasciaRaw = isset($row[4]) && $row[4] !== '' ? (int) $row[4] : null;
 
                 if ($extId === null || $titRaw === null) { $skipped++; continue; }
                 if ($titRaw < 1 || $titRaw > 5)         { $skipped++; continue; }
                 if (!$listone->has($extId))              { $notFound++; continue; }
 
-                $player  = $listone->get($extId);
-                $titNorm = $titRaw * 20;
-                $existing = $player->titolare !== null ? (int) $player->titolare : null;
-                $newTit  = $existing !== null ? (int) round(($existing + $titNorm) / 2) : $titNorm;
+                $player    = $listone->get($extId);
+                $titNorm   = $titRaw * 20;
+
+                // Base sempre dal valore fantagoat originale — idempotente su re-import
+                $goatBase  = $player->titolare_goat ?? $player->titolare;
+                $newTit    = $goatBase !== null
+                    ? (int) round(($goatBase + $titNorm) / 2)
+                    : $titNorm;
 
                 FantaListone::where('id', $player->id)->update([
-                    'titolare'     => $newTit,
-                    'fanta_fascia' => ($fasciaRaw >= 1 && $fasciaRaw <= 8) ? $fasciaRaw : null,
-                    'updated_at'   => now(),
+                    'titolare'          => $newTit,
+                    'titolare_esperto2' => $titNorm,
+                    'fanta_fascia'      => ($fasciaRaw >= 1 && $fasciaRaw <= 8) ? $fasciaRaw : null,
+                    'updated_at'        => now(),
                 ]);
                 $updated++;
             }

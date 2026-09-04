@@ -48,7 +48,7 @@ class FantacalcioImportEsperto2 extends Command
         $data = array_slice($rows, 1);
 
         // Precarica listone indicizzato per external_id
-        $listone = FantaListone::select(['id', 'external_id', 'titolare'])
+        $listone = FantaListone::select(['id', 'external_id', 'titolare', 'titolare_goat'])
             ->get()
             ->keyBy('external_id');
 
@@ -77,19 +77,21 @@ class FantacalcioImportEsperto2 extends Command
                 continue;
             }
 
-            $player   = $listone->get($extId);
-            $titNorm  = $this->normalizeTitolarita($titRaw);
-            $existing = $player->titolare !== null ? (int) $player->titolare : null;
+            $player    = $listone->get($extId);
+            $titNorm   = $this->normalizeTitolarita($titRaw);
             $fasciaRaw = isset($row[4]) && $row[4] !== '' ? (int) $row[4] : null;
 
-            $newTit = $existing !== null
-                ? (int) round(($existing + $titNorm) / 2)
+            // Base sempre dal valore fantagoat originale — idempotente su re-import
+            $goatBase = $player->titolare_goat ?? $player->titolare;
+            $newTit   = $goatBase !== null
+                ? (int) round(($goatBase + $titNorm) / 2)
                 : $titNorm;
 
             $updateRows[$player->id] = [
-                'titolare'     => $newTit,
-                'fanta_fascia' => ($fasciaRaw >= 1 && $fasciaRaw <= 8) ? $fasciaRaw : null,
-                'updated_at'   => now(),
+                'titolare'          => $newTit,
+                'titolare_esperto2' => $titNorm,
+                'fanta_fascia'      => ($fasciaRaw >= 1 && $fasciaRaw <= 8) ? $fasciaRaw : null,
+                'updated_at'        => now(),
             ];
             $updated++;
         }

@@ -36,6 +36,8 @@ protected $fillable = [
     'like',
     'dislike',
     'titolare',
+    'titolare_goat',
+    'titolare_esperto2',
     'mv24',
     'level',
     'recommended_credits',
@@ -50,6 +52,8 @@ protected $fillable = [
         'ia_confidence'       => 'integer',
         'ia_sources'          => 'integer',
         'fanta_fascia'        => 'integer',
+        'titolare_goat'       => 'integer',
+        'titolare_esperto2'   => 'integer',
     ];
 
 }
