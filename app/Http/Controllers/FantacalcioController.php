@@ -142,69 +142,55 @@ class FantacalcioController extends Controller
         ];
         $required = ['external_id', 'ruolo', 'ruolo_esteso', 'nome', 'squadra', 'fvm'];
 
-        $reader = \OpenSpout\Reader\Common\Creator\ReaderFactory::createFromType('xlsx');
-        $reader->open($path);
+        $rawRows = $this->parseXlsx($path);
+        // Row 0: titolo (skip); Row 1: intestazioni; Row 2+: dati
+        $rows = [];
+        $idx  = [];
 
-        $rows    = [];
-        $idx     = [];
-        $rowNum  = 0;
-
-        foreach ($reader->getSheetIterator() as $sheet) {
-            foreach ($sheet->getRowIterator() as $row) {
-                $rowNum++;
-                $cells = [];
-                foreach ($row->getCells() as $cell) {
-                    $v = $cell->getValue();
-                    $cells[] = is_string($v) ? trim($v) : $v;
-                }
-
-                if ($rowNum === 1) continue; // riga titolo
-
-                if ($rowNum === 2) {
-                    $header = array_map(fn($v) => strtolower(trim((string) $v)), $cells);
-                    foreach ($header as $pos => $label) {
-                        if (isset($colMap[$label])) {
-                            $idx[$colMap[$label]] = $pos;
-                        }
-                    }
-                    foreach ($required as $field) {
-                        if (!isset($idx[$field])) {
-                            $reader->close();
-                            return "Colonna richiesta mancante nell'XLSX: {$field}";
-                        }
-                    }
-                    continue;
-                }
-
-                $extId = (int) (float) ($cells[$idx['external_id']] ?? 0);
-                if ($extId <= 0) continue;
-
-                $intCol = fn(string $field) => isset($idx[$field]) && isset($cells[$idx[$field]])
-                    ? (int) (float) $cells[$idx[$field]]
-                    : null;
-
-                $rows[] = [
-                    'external_id'  => $extId,
-                    'ruolo'        => (string) ($cells[$idx['ruolo']] ?? ''),
-                    'ruolo_esteso' => (string) ($cells[$idx['ruolo_esteso']] ?? ''),
-                    'nome'         => (string) ($cells[$idx['nome']] ?? ''),
-                    'squadra'      => (string) ($cells[$idx['squadra']] ?? ''),
-                    'fvm'          => $intCol('fvm') ?? 0,
-                    'quota_a'      => $intCol('quota_a'),
-                    'quota_i'      => $intCol('quota_i'),
-                    'diff_quota'   => $intCol('diff_quota'),
-                    'quota_a_m'    => $intCol('quota_a_m'),
-                    'quota_i_m'    => $intCol('quota_i_m'),
-                    'diff_quota_m' => $intCol('diff_quota_m'),
-                    'fvm_m'        => $intCol('fvm_m'),
-                    'created_at'   => now(),
-                    'updated_at'   => now(),
-                ];
-            }
-            break; // solo foglio "Tutti"
+        if (count($rawRows) < 2) {
+            return [];
         }
 
-        $reader->close();
+        $header = array_map(fn($v) => strtolower(trim((string) $v)), $rawRows[1]);
+        foreach ($header as $pos => $label) {
+            if (isset($colMap[$label])) {
+                $idx[$colMap[$label]] = $pos;
+            }
+        }
+        foreach ($required as $field) {
+            if (!isset($idx[$field])) {
+                return "Colonna richiesta mancante nell'XLSX: {$field}";
+            }
+        }
+
+        for ($i = 2; $i < count($rawRows); $i++) {
+            $cells = $rawRows[$i];
+            $extId = (int) (float) ($cells[$idx['external_id']] ?? 0);
+            if ($extId <= 0) continue;
+
+            $intCol = fn(string $field) => isset($idx[$field]) && isset($cells[$idx[$field]])
+                ? (int) (float) $cells[$idx[$field]]
+                : null;
+
+            $rows[] = [
+                'external_id'  => $extId,
+                'ruolo'        => trim((string) ($cells[$idx['ruolo']] ?? '')),
+                'ruolo_esteso' => trim((string) ($cells[$idx['ruolo_esteso']] ?? '')),
+                'nome'         => trim((string) ($cells[$idx['nome']] ?? '')),
+                'squadra'      => trim((string) ($cells[$idx['squadra']] ?? '')),
+                'fvm'          => $intCol('fvm') ?? 0,
+                'quota_a'      => $intCol('quota_a'),
+                'quota_i'      => $intCol('quota_i'),
+                'diff_quota'   => $intCol('diff_quota'),
+                'quota_a_m'    => $intCol('quota_a_m'),
+                'quota_i_m'    => $intCol('quota_i_m'),
+                'diff_quota_m' => $intCol('diff_quota_m'),
+                'fvm_m'        => $intCol('fvm_m'),
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ];
+        }
+
         return $rows;
     }
 
@@ -1121,58 +1107,42 @@ private function loadAssignedByIndex(): array
             'au'  => 'au',
         ];
 
-        $reader  = \OpenSpout\Reader\Common\Creator\ReaderFactory::createFromType('xlsx');
-        $reader->open($path);
-
+        $allRows = $this->parseXlsx($path);
+        // Row 0: titolo (skip); Row 1: intestazioni; Row 2+: dati
         $rows    = [];
         $idx     = [];
-        $rowNum  = 0;
-        $toFloat = fn($v) => is_float($v) || is_int($v)
-            ? (float) $v
-            : (float) str_replace(',', '.', (string) $v);
+        $toFloat = fn($v) => (float) str_replace(',', '.', (string) $v);
 
-        foreach ($reader->getSheetIterator() as $sheet) {
-            foreach ($sheet->getRowIterator() as $row) {
-                $rowNum++;
-                $cells = [];
-                foreach ($row->getCells() as $cell) {
-                    $v = $cell->getValue();
-                    $cells[] = is_string($v) ? trim($v) : $v;
-                }
-
-                if ($rowNum === 1) continue; // riga titolo
-
-                if ($rowNum === 2) {
-                    foreach ($cells as $pos => $label) {
-                        $key = strtolower(trim((string) $label));
-                        if (isset($colMap[$key])) {
-                            $idx[$colMap[$key]] = $pos;
-                        }
-                    }
-                    if (!isset($idx['external_id'])) {
-                        $reader->close();
-                        return back()->with('error', "Colonna 'Id' non trovata nel file statistiche.");
-                    }
-                    continue;
-                }
-
-                $extId = (int) $toFloat($cells[$idx['external_id']] ?? 0);
-                if ($extId <= 0) continue;
-
-                $r = ['external_id' => $extId, 'season' => $season];
-                foreach (['pv', 'gf', 'gs', 'rp', 'rc', 'rplus', 'rminus', 'ass', 'amm', 'esp', 'au'] as $col) {
-                    $r[$col] = isset($idx[$col]) ? (int) $toFloat($cells[$idx[$col]] ?? 0) : null;
-                }
-                foreach (['mv', 'fm'] as $col) {
-                    $r[$col] = isset($idx[$col]) ? $toFloat($cells[$idx[$col]] ?? 0) : null;
-                }
-                $r['created_at'] = now();
-                $r['updated_at'] = now();
-                $rows[] = $r;
-            }
-            break;
+        if (count($allRows) < 2) {
+            return back()->with('error', 'Nessun dato trovato nel file statistiche.');
         }
-        $reader->close();
+
+        foreach ($allRows[1] as $pos => $label) {
+            $key = strtolower(trim((string) $label));
+            if (isset($colMap[$key])) {
+                $idx[$colMap[$key]] = $pos;
+            }
+        }
+        if (!isset($idx['external_id'])) {
+            return back()->with('error', "Colonna 'Id' non trovata nel file statistiche.");
+        }
+
+        for ($i = 2; $i < count($allRows); $i++) {
+            $cells = $allRows[$i];
+            $extId = (int) $toFloat($cells[$idx['external_id']] ?? 0);
+            if ($extId <= 0) continue;
+
+            $r = ['external_id' => $extId, 'season' => $season];
+            foreach (['pv', 'gf', 'gs', 'rp', 'rc', 'rplus', 'rminus', 'ass', 'amm', 'esp', 'au'] as $col) {
+                $r[$col] = isset($idx[$col]) ? (int) $toFloat($cells[$idx[$col]] ?? 0) : null;
+            }
+            foreach (['mv', 'fm'] as $col) {
+                $r[$col] = isset($idx[$col]) ? $toFloat($cells[$idx[$col]] ?? 0) : null;
+            }
+            $r['created_at'] = now();
+            $r['updated_at'] = now();
+            $rows[] = $r;
+        }
 
         if (empty($rows)) {
             return back()->with('error', 'Nessun dato trovato nel file statistiche.');
@@ -1282,18 +1252,11 @@ private function loadAssignedByIndex(): array
     {
         $request->validate(['xlsx' => ['required', 'file', 'mimes:xlsx,xls', 'max:20480']]);
 
-        $path   = $request->file('xlsx')->getRealPath();
-        $reader = \OpenSpout\Reader\Common\Creator\ReaderFactory::createFromType('xlsx');
-        $reader->open($path);
-
-        $rows = [];
-        foreach ($reader->getSheetIterator() as $sheet) {
-            foreach ($sheet->getRowIterator() as $row) {
-                $rows[] = $row->toArray();
-            }
-            break;
+        try {
+            $rows = $this->parseXlsx($request->file('xlsx')->getRealPath());
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Errore lettura XLSX: ' . $e->getMessage());
         }
-        $reader->close();
 
         $data = array_slice($rows, 1);
 
@@ -1340,6 +1303,77 @@ private function loadAssignedByIndex(): array
         }
 
         return back()->with('success', "Esperto2 import: aggiornati {$updated}, senza valutazione {$skipped}, non trovati {$notFound}.");
+    }
+
+    // Legge un file XLSX usando solo estensioni PHP native (ZipArchive + SimpleXML).
+    // Non richiede openspout né altri package — compatibile con qualsiasi hosting.
+    private function parseXlsx(string $path): array
+    {
+        $zip = new \ZipArchive();
+        if ($zip->open($path) !== true) {
+            throw new \RuntimeException('Impossibile aprire il file XLSX.');
+        }
+
+        // Shared strings (testo delle celle)
+        $sharedStrings = [];
+        $ssRaw = $zip->getFromName('xl/sharedStrings.xml');
+        if ($ssRaw !== false) {
+            $ss = new \SimpleXMLElement($ssRaw);
+            foreach ($ss->si as $si) {
+                if (isset($si->t)) {
+                    $sharedStrings[] = (string) $si->t;
+                } else {
+                    $str = '';
+                    foreach ($si->r as $r) {
+                        $str .= (string) $r->t;
+                    }
+                    $sharedStrings[] = $str;
+                }
+            }
+        }
+
+        $sheetRaw = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $zip->close();
+
+        if ($sheetRaw === false) {
+            throw new \RuntimeException('Foglio sheet1 non trovato nel file XLSX.');
+        }
+
+        $sheet = new \SimpleXMLElement($sheetRaw);
+        $rows  = [];
+
+        foreach ($sheet->sheetData->row as $xmlRow) {
+            $cells = [];
+            foreach ($xmlRow->c as $cell) {
+                $ref  = (string) $cell['r'];
+                preg_match('/^([A-Z]+)/', $ref, $m);
+                $col  = 0;
+                foreach (str_split($m[1]) as $ch) {
+                    $col = $col * 26 + (ord($ch) - 64);
+                }
+                $col--; // 0-based
+
+                $type = (string) $cell['t'];
+                $val  = (string) $cell->v;
+
+                if ($type === 's') {
+                    $val = $sharedStrings[(int) $val] ?? '';
+                }
+
+                $cells[$col] = $val;
+            }
+
+            if (!empty($cells)) {
+                $max = max(array_keys($cells));
+                $row = [];
+                for ($i = 0; $i <= $max; $i++) {
+                    $row[] = $cells[$i] ?? '';
+                }
+                $rows[] = $row;
+            }
+        }
+
+        return $rows;
     }
 
 
