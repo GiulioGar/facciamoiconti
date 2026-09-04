@@ -361,9 +361,8 @@ public function listoneData(Request $request)
         6  => 'score',
         7  => 'level',
         8  => 'ia',
-        9  => 'fanta_fascia',
-        10 => DB::raw($likesSigned),
-        11 => DB::raw($dislikesSigned),
+        9  => DB::raw($likesSigned),
+        10 => DB::raw($dislikesSigned),
     ];
 
     if (!empty($order)) {
@@ -400,7 +399,6 @@ public function listoneData(Request $request)
             'score',
             'level',
             'ia',
-            'fanta_fascia',
         ])
         ->get();
 
@@ -415,10 +413,9 @@ public function listoneData(Request $request)
             $r->score !== null ? number_format((float) $r->score, 2, '.', '') : null, // 6  - Score
             (int) ($r->level ?? 3),                                                   // 7  - Level
             $r->ia !== null ? (int) $r->ia : null,                                    // 8  - IA
-            $r->fanta_fascia !== null ? (int) $r->fanta_fascia : null,                // 9  - Fascia
-            (int) $r->likes,                                                          // 10 - Like
-            (int) $r->dislikes,                                                       // 11 - Dislike
-            (int) $r->id,                                                             // 12 - hidden id
+            (int) $r->likes,                                                          // 9  - Like
+            (int) $r->dislikes,                                                       // 10 - Dislike
+            (int) $r->id,                                                             // 11 - hidden id (ROW_ID_IDX)
         ];
     });
 

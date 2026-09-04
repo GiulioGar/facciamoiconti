@@ -102,13 +102,6 @@
             <i class="bi bi-lightning-fill me-1"></i> Import Goat
           </button>
         </form>
-        <form action="{{ route('fantacalcio.esperto2.import') }}" method="POST" enctype="multipart/form-data" class="m-0 ms-2 d-flex align-items-center gap-1">
-          @csrf
-          <input type="file" name="xlsx" accept=".xlsx,.xls" class="form-control form-control-sm" style="max-width:160px" required>
-          <button type="submit" class="btn btn-outline-info btn-sm text-nowrap">
-            <i class="bi bi-person-check me-1"></i> Import Esperto2
-          </button>
-        </form>
       </div>
     </div>
 
@@ -156,7 +149,6 @@
               <th class="text-center">Score</th>
               <th class="text-center">Level</th>
               <th class="text-center">IA</th>
-              <th class="text-center">Fascia</th>
               <th class="text-center">Like</th>
               <th class="text-center">Dislike</th>
             </tr>
@@ -214,7 +206,7 @@
     `;
   }
 
-  const ROW_ID_IDX = 12;
+  const ROW_ID_IDX = 11;
 
   const table = $('#listone-table').DataTable({
     processing: true,
@@ -225,7 +217,7 @@
     pageLength: 25,
     order: [
       [6, 'desc'],
-      [10, 'desc'],
+      [9, 'desc'],
       [2, 'asc']
     ],
     ajax: {
@@ -253,12 +245,11 @@
           return `<span class="badge bg-${cls} cell-level-edit" data-id="${id}" data-level="${lvl}" title="Clic per modificare">${lvl} - ${label}</span>`;
       }},
       { data: 8,  className: 'text-center fw-semibold', render: d => d !== null ? d : 'NV' },
-      { data: 9,  className: 'text-center', render: d => d !== null ? d : 'NV' },
-      { data: 10, className: 'text-center', orderable: false, render: (d, type, row) => {
+      { data: 9,  className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-like" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-up me-1"></i><strong>${d}</strong></span>`;
       }},
-      { data: 11, className: 'text-center', orderable: false, render: (d, type, row) => {
+      { data: 10, className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-dislike" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-down me-1"></i><strong>${d}</strong></span>`;
       }},
