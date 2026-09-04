@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use App\Models\FantaQuotazione;
 use App\Models\FantaListone;
 use App\Models\FantaRosa;
@@ -361,8 +362,9 @@ public function listoneData(Request $request)
         6  => 'score',
         7  => 'level',
         8  => 'ia',
-        9  => DB::raw($likesSigned),
-        10 => DB::raw($dislikesSigned),
+        9  => 'ge_index',
+        10 => DB::raw($likesSigned),
+        11 => DB::raw($dislikesSigned),
     ];
 
     if (!empty($order)) {
@@ -399,6 +401,7 @@ public function listoneData(Request $request)
             'score',
             'level',
             'ia',
+            'ge_index',
         ])
         ->get();
 
@@ -413,9 +416,10 @@ public function listoneData(Request $request)
             $r->score !== null ? number_format((float) $r->score, 2, '.', '') : null, // 6  - Score
             (int) ($r->level ?? 3),                                                   // 7  - Level
             $r->ia !== null ? (int) $r->ia : null,                                    // 8  - IA
-            (int) $r->likes,                                                          // 9  - Like
-            (int) $r->dislikes,                                                       // 10 - Dislike
-            (int) $r->id,                                                             // 11 - hidden id (ROW_ID_IDX)
+            $r->ge_index !== null ? (int) $r->ge_index : null,                        // 9  - GE Index
+            (int) $r->likes,                                                          // 10 - Like
+            (int) $r->dislikes,                                                       // 11 - Dislike
+            (int) $r->id,                                                             // 12 - hidden id (ROW_ID_IDX)
         ];
     });
 
@@ -1255,40 +1259,97 @@ private function loadAssignedByIndex(): array
             return back()->with('error', 'Errore lettura XLSX: ' . $e->getMessage());
         }
 
-        $data = array_slice($rows, 1);
+        $data      = array_slice($rows, 1); // salta header
+        $particles = ['el','de','di','van','von','da','del','della','dos','lo','la','le','mac','mc'];
 
-        $listone = FantaListone::select(['id', 'external_id', 'titolare_goat', 'titolare'])
-            ->get()
-            ->keyBy('external_id');
+        // Normalizza stringa per matching: ASCII lowercase senza punteggiatura
+        $norm = function (string $s) use ($particles): string {
+            $s = Str::ascii(trim($s));
+            return strtolower(preg_replace('/[^a-z0-9]/', '', $s));
+        };
 
-        $updated  = 0;
-        $skipped  = 0;
-        $notFound = 0;
+        // Estrae cognome (gestisce particelle composte: "El Shaarawy" → "elshaarawy")
+        // Restituisce [cognome_normalizzato, parti_rimanenti]
+        $splitCognome = function (string $nome) use ($norm, $particles): array {
+            $parts = preg_split('/\s+/', trim($nome));
+            $cogParts = [$parts[0]];
+            if (count($parts) > 1 && in_array(strtolower($parts[0]), $particles)) {
+                $cogParts[] = $parts[1];
+            }
+            return [$norm(implode(' ', $cogParts)), array_slice($parts, count($cogParts))];
+        };
+
+        // Costruisce indici DB: byCognomeRuolo e byCognome
+        $listone = FantaListone::select(['id', 'nome', 'ruolo', 'titolare_goat', 'titolare'])->get();
+        $byCognomeRuolo = [];
+        $byCognome      = [];
+
+        foreach ($listone as $p) {
+            [$dbCog, $dbRest] = $splitCognome($p->nome);
+            // Iniziale DB: tutto ciò che viene dopo il cognome, tolti i punti (es. "A." → "a", "F.P." → "fp")
+            $dbInit = !empty($dbRest) ? strtolower(preg_replace('/[^a-z]/i', '', implode('', $dbRest))) : null;
+            $entry  = ['player' => $p, 'init' => $dbInit];
+            $byCognomeRuolo[$dbCog . '|' . $p->ruolo][] = $entry;
+            $byCognome[$dbCog][]                         = $entry;
+        }
+
+        // Disambigua tra più candidati usando la prima lettera del nome GE
+        $disambiguate = function (array $candidates, ?string $geoFirstLetter): ?array {
+            if (count($candidates) === 1) return $candidates[0];
+            if ($geoFirstLetter === null) return null;
+            $hits = array_values(array_filter($candidates, fn ($e) =>
+                $e['init'] !== null && str_starts_with($e['init'], $geoFirstLetter)
+            ));
+            return count($hits) === 1 ? $hits[0] : null;
+        };
+
+        $updated = 0; $skipped = 0; $notFound = 0; $ambiguous = 0;
 
         DB::beginTransaction();
         try {
             foreach ($data as $row) {
-                $extId     = isset($row[0]) && $row[0] !== '' ? (int) $row[0] : null;
-                $titRaw    = isset($row[5]) && $row[5] !== '' ? (int) $row[5] : null;
-                $fasciaRaw = isset($row[4]) && $row[4] !== '' ? (int) $row[4] : null;
+                $nomeRaw  = trim($row[2] ?? '');
+                $ruolo    = strtoupper(trim($row[1] ?? ''));
+                $fasciaRaw = $row[4] !== '' ? (int) $row[4] : null;
+                $titRaw    = $row[5] !== '' ? (int) $row[5] : null;
+                $totaleGE  = $row[6] !== '' ? (int) $row[6] : null;
 
-                if ($extId === null || $titRaw === null) { $skipped++; continue; }
-                if ($titRaw < 1 || $titRaw > 5)         { $skipped++; continue; }
-                if (!$listone->has($extId))              { $notFound++; continue; }
+                if (!$nomeRaw || !in_array($ruolo, ['P', 'D', 'C', 'A'])) { $skipped++; continue; }
+                if ($titRaw === null || $titRaw < 1 || $titRaw > 9)         { $skipped++; continue; }
 
-                $player    = $listone->get($extId);
-                $titNorm   = $titRaw * 20;
+                [$geCog, $geRest] = $splitCognome($nomeRaw);
+                $geFirstLetter    = !empty($geRest) ? strtolower(substr($geRest[0], 0, 1)) : null;
 
-                // Base sempre dal valore fantagoat originale — idempotente su re-import
-                $goatBase  = $player->titolare_goat ?? $player->titolare;
-                $newTit    = $goatBase !== null
+                // Tentativo 1: cognome + ruolo corrispondente
+                $match = $disambiguate($byCognomeRuolo[$geCog . '|' . $ruolo] ?? [], $geFirstLetter);
+
+                // Tentativo 2: ruolo diverso (mismatch tra GE e quotazioni ufficiali)
+                if (!$match) {
+                    $match = $disambiguate($byCognome[$geCog] ?? [], $geFirstLetter);
+                }
+
+                if (!$match) {
+                    isset($byCognome[$geCog]) ? $ambiguous++ : $notFound++;
+                    continue;
+                }
+
+                $player  = $match['player'];
+                // Titolarità 1-9 → 0-100: T1=0, T5=50, T9=100
+                $titNorm = (int) round(($titRaw - 1) / 8 * 100);
+                // Indice GE: totale/50 × 100 = totale × 2; clampato a 100
+                $geIdx   = $totaleGE !== null ? min(100, $totaleGE * 2) : null;
+
+                // Idempotenza: usa sempre titolare_goat come base per la media
+                $goatBase = $player->titolare_goat ?? $player->titolare;
+                $newTit   = $goatBase !== null
                     ? (int) round(($goatBase + $titNorm) / 2)
                     : $titNorm;
 
                 FantaListone::where('id', $player->id)->update([
                     'titolare'          => $newTit,
                     'titolare_esperto2' => $titNorm,
-                    'fanta_fascia'      => ($fasciaRaw >= 1 && $fasciaRaw <= 8) ? $fasciaRaw : null,
+                    'fanta_fascia'      => ($fasciaRaw >= 1 && $fasciaRaw <= 10) ? $fasciaRaw : null,
+                    'ge_index'          => $geIdx,
                     'updated_at'        => now(),
                 ]);
                 $updated++;
@@ -1296,10 +1357,12 @@ private function loadAssignedByIndex(): array
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
-            return back()->with('error', 'Errore import esperto2: ' . $e->getMessage());
+            return back()->with('error', 'Errore import GE: ' . $e->getMessage());
         }
 
-        return back()->with('success', "Esperto2 import: aggiornati {$updated}, senza valutazione {$skipped}, non trovati {$notFound}.");
+        return back()->with('success',
+            "Import Gruppo Esperti: {$updated} aggiornati, {$skipped} saltati, {$ambiguous} ambigui, {$notFound} non trovati."
+        );
     }
 
     // Legge un file XLSX usando solo estensioni PHP native (ZipArchive + SimpleXML).
@@ -1355,9 +1418,16 @@ private function loadAssignedByIndex(): array
 
                 if ($type === 's') {
                     $val = $sharedStrings[(int) $val] ?? '';
+                } elseif ($type === 'inlineStr') {
+                    $val = (string) $cell->is->t;
+                    if ($val === '' && isset($cell->is->r)) {
+                        foreach ($cell->is->r as $r) {
+                            $val .= (string) $r->t;
+                        }
+                    }
                 }
 
-                $cells[$col] = $val;
+                $cells[$col] = trim($val);
             }
 
             if (!empty($cells)) {

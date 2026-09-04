@@ -82,11 +82,14 @@ class AppetibilityCalculator
             // E: Indice Appetibilita (IA) — malus 25 se assente (non citato da fonti editoriali)
             $E = isset($p['ia']) && $p['ia'] !== null ? (float)$p['ia'] : 25.0;
 
+            // G: Indice Gruppo Esperti (ge_index 0-100) — malus 25 se assente
+            $G = isset($p['ge_index']) && $p['ge_index'] !== null ? (float)$p['ge_index'] : 25.0;
+
             // C: correzione manuale like/dislike, clampata a +/-10
             $net = $like - $dislike;
             $C   = $this->clamp($net / 10.0, -1.0, 1.0) * 10.0;
 
-            $score           = $this->clamp(0.25 * $A + 0.35 * $B + 0.25 * $F + 0.15 * $E + $C, 0.0, 100.0);
+            $score           = $this->clamp(0.20 * $A + 0.30 * $B + 0.20 * $F + 0.15 * $E + 0.15 * $G + $C, 0.0, 100.0);
             $results[$extId] = round($score, 2);
         }
 
@@ -99,7 +102,7 @@ class AppetibilityCalculator
             $season = $this->latestSeason();
         }
 
-        $listone = FantaListone::select('external_id', 'ruolo', 'fvm', 'like', 'dislike', 'fanta_index', 'ia')->get();
+        $listone = FantaListone::select('external_id', 'ruolo', 'fvm', 'like', 'dislike', 'fanta_index', 'ia', 'ge_index')->get();
         $stats   = FantaPlayerStats::where('season', $season)
             ->select('external_id', 'pv', 'mv', 'fm', 'gf', 'gs', 'rp', 'ass', 'amm')
             ->get()
@@ -115,6 +118,7 @@ class AppetibilityCalculator
                 'dislike'      => $player->dislike ?? 0,
                 'fanta_index'  => $player->fanta_index,
                 'ia'           => $player->ia,
+                'ge_index'     => $player->ge_index,
                 'pv'           => $st ? $st->pv : null,
                 'mv'           => $st ? $st->mv : null,
                 'fm'           => $st ? $st->fm : null,
