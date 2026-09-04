@@ -375,8 +375,9 @@ public function listoneData(Request $request)
         6  => 'score',
         7  => 'level',
         8  => 'ia',
-        9  => DB::raw($likesSigned),
-        10 => DB::raw($dislikesSigned),
+        9  => 'fanta_fascia',
+        10 => DB::raw($likesSigned),
+        11 => DB::raw($dislikesSigned),
     ];
 
     if (!empty($order)) {
@@ -413,6 +414,7 @@ public function listoneData(Request $request)
             'score',
             'level',
             'ia',
+            'fanta_fascia',
         ])
         ->get();
 
@@ -427,9 +429,10 @@ public function listoneData(Request $request)
             $r->score !== null ? number_format((float) $r->score, 2, '.', '') : null, // 6  - Score
             (int) ($r->level ?? 3),                                                   // 7  - Level
             $r->ia !== null ? (int) $r->ia : null,                                    // 8  - IA
-            (int) $r->likes,                                                          // 9  - Like
-            (int) $r->dislikes,                                                       // 10 - Dislike
-            (int) $r->id,                                                             // 11 - hidden id
+            $r->fanta_fascia !== null ? (int) $r->fanta_fascia : null,                // 9  - Fascia
+            (int) $r->likes,                                                          // 10 - Like
+            (int) $r->dislikes,                                                       // 11 - Dislike
+            (int) $r->id,                                                             // 12 - hidden id
         ];
     });
 
@@ -512,7 +515,19 @@ private function refreshScore(FantaListone $p, int $oldLike, int $oldDislike): v
     $newScore = round(max(0.0, min(100.0, (float) $p->score - $cOld + $cNew)), 2);
 
     $p->score = $newScore;
+    $p->level = $this->scoreToLevel($newScore);
     $p->save();
+}
+
+// Soglie floor per il level — usa i floor assoluti (non i percentili di ruolo,
+// che richiedono la distribuzione completa e non sono pratici per un aggiornamento live).
+private function scoreToLevel(float $score): int
+{
+    if ($score >= 72) return 5;
+    if ($score >= 65) return 4;
+    if ($score >= 55) return 3;
+    if ($score >= 45) return 2;
+    return 1;
 }
 
 
@@ -887,23 +902,29 @@ public function updateLevel(Request $request, $id)
 // == CALCOLO AUTOMATICO LIVELLI (Formula C, percentili per ruolo) ==
 public function updateLevels(Request $request)
 {
+    try {
+        $this->recalculateLevels();
+    } catch (\Throwable $e) {
+        return back()->with('error', 'Errore aggiornando livelli/crediti: ' . $e->getMessage());
+    }
+
+    return back()->with('success', 'Livelli e crediti ricalcolati con successo.');
+}
+
+// Logica core del ricalcolo livelli — usata da updateLevels() e scoreRecalculate().
+private function recalculateLevels(): void
+{
     // Soglie: L5=max(P97,72)  L4=max(P87,65)  L3=max(P75,55)  L2=max(P50,45)
     $percDef  = [5 => 97.0, 4 => 87.0, 3 => 75.0, 2 => 50.0];
     $floorDef = [5 => 72.0, 4 => 65.0, 3 => 55.0, 2 => 45.0];
 
-    // Budget per reparto e percentuali per level (invariati)
     $roleBudget = ['P' => 120, 'D' => 300, 'C' => 900, 'A' => 1180];
     $levelPerc  = [5 => 0.50, 4 => 0.15, 3 => 0.05, 2 => 0.01, 1 => 0.00];
 
-    $rows = FantaListone::query()
-        ->select(['id', 'ruolo', 'score'])
-        ->get();
+    $rows = FantaListone::query()->select(['id', 'ruolo', 'score'])->get();
 
-    if ($rows->isEmpty()) {
-        return back()->with('error', 'Nessun dato per il calcolo livelli.');
-    }
+    if ($rows->isEmpty()) return;
 
-    // Helper: valore al percentile P in un array già ordinato
     $pctValue = function (array $sorted, float $p) {
         $n = count($sorted);
         if ($n === 0) return 0.0;
@@ -913,14 +934,12 @@ public function updateLevels(Request $request)
         return $sorted[$lo] + ($sorted[$hi] - $sorted[$lo]) * ($i - $lo);
     };
 
-    $byRole = $rows->groupBy('ruolo');
-
+    $byRole     = $rows->groupBy('ruolo');
     $levelCase  = "CASE id ";
     $creditCase = "CASE id ";
     $ids        = [];
 
     foreach ($byRole as $role => $items) {
-        // Score ordinati per calcolo percentili
         $sorted = $items
             ->filter(fn($r) => $r->score !== null)
             ->pluck('score')
@@ -929,7 +948,6 @@ public function updateLevels(Request $request)
             ->values()
             ->toArray();
 
-        // Soglie effettive per questo ruolo
         $thresh = [];
         foreach ([5, 4, 3, 2] as $lvl) {
             $thresh[$lvl] = max($pctValue($sorted, $percDef[$lvl]), $floorDef[$lvl]);
@@ -961,7 +979,7 @@ public function updateLevels(Request $request)
         }
     }
 
-    if (empty($ids)) return back()->with('success', 'Nessun aggiornamento necessario.');
+    if (empty($ids)) return;
 
     $levelCase  .= "END";
     $creditCase .= "END";
@@ -976,10 +994,8 @@ public function updateLevels(Request $request)
         DB::commit();
     } catch (\Throwable $e) {
         DB::rollBack();
-        return back()->with('error', 'Errore aggiornando livelli/crediti: ' . $e->getMessage());
+        throw $e;
     }
-
-    return back()->with('success', 'Livelli e crediti ricalcolati con successo.');
 }
 
 
@@ -1188,11 +1204,12 @@ private function loadAssignedByIndex(): array
         try {
             $calculator = new AppetibilityCalculator();
             $count = $calculator->recalculate($season);
+            $this->recalculateLevels();
         } catch (\Throwable $e) {
             return back()->with('error', 'Errore ricalcolo score: ' . $e->getMessage());
         }
 
-        return back()->with('success', "Score aggiornato per {$count} giocatori.");
+        return back()->with('success', "Score aggiornato per {$count} giocatori e livelli ricalcolati.");
     }
 
     // --- IMPORT JSON fantagoat (fanta_index + titolarita) ---

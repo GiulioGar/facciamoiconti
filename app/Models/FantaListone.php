@@ -31,6 +31,7 @@ protected $fillable = [
     'ia_confidence',
     'ia_status',
     'ia_sources',
+    'fanta_fascia',
     'stato',
     'like',
     'dislike',
@@ -48,6 +49,7 @@ protected $fillable = [
         'ia'                  => 'integer',
         'ia_confidence'       => 'integer',
         'ia_sources'          => 'integer',
+        'fanta_fascia'        => 'integer',
     ];
 
 }

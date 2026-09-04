@@ -149,6 +149,7 @@
               <th class="text-center">Score</th>
               <th class="text-center">Level</th>
               <th class="text-center">IA</th>
+              <th class="text-center">Fascia</th>
               <th class="text-center">Like</th>
               <th class="text-center">Dislike</th>
             </tr>
@@ -206,7 +207,7 @@
     `;
   }
 
-  const ROW_ID_IDX = 11;
+  const ROW_ID_IDX = 12;
 
   const table = $('#listone-table').DataTable({
     processing: true,
@@ -217,7 +218,7 @@
     pageLength: 25,
     order: [
       [6, 'desc'],
-      [9, 'desc'],
+      [10, 'desc'],
       [2, 'asc']
     ],
     ajax: {
@@ -245,11 +246,12 @@
           return `<span class="badge bg-${cls} cell-level-edit" data-id="${id}" data-level="${lvl}" title="Clic per modificare">${lvl} - ${label}</span>`;
       }},
       { data: 8,  className: 'text-center fw-semibold', render: d => d !== null ? d : 'NV' },
-      { data: 9,  className: 'text-center', orderable: false, render: (d, type, row) => {
+      { data: 9,  className: 'text-center', render: d => d !== null ? d : 'NV' },
+      { data: 10, className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-like" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-up me-1"></i><strong>${d}</strong></span>`;
       }},
-      { data: 10, className: 'text-center', orderable: false, render: (d, type, row) => {
+      { data: 11, className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-dislike" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-down me-1"></i><strong>${d}</strong></span>`;
       }},

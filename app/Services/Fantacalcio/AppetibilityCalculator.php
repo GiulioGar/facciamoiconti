@@ -63,7 +63,7 @@ class AppetibilityCalculator
             $hasStat = $pv > 0 && isset($p['mv']) && $p['mv'] !== null;
             $hasFi   = isset($p['fanta_index']) && $p['fanta_index'] !== null;
 
-            // A: percentile FVM nel ruolo (peso 0.25)
+            // A: percentile FVM nel ruolo (peso 0.20)
             $A = $this->percentileRank($fvm, $fvms);
 
             // B: performance storica role-specific, smorzata da affidabilita' (pv/20)
@@ -76,14 +76,22 @@ class AppetibilityCalculator
             }
             $B = $rel * $perfRaw + (1.0 - $rel) * $avgPerf;
 
-            // F: fanta_index percentile nel ruolo (peso 0.30); fallback 50 se assente
+            // F: fanta_index percentile nel ruolo (peso 0.20); fallback 50 se assente
             $F = $hasFi ? $this->percentileRank((float)$p['fanta_index'], $fiVals) : 50.0;
+
+            // E: Indice Appetibilita (IA) — malus 25 se assente (non citato da fonti editoriali)
+            $E = isset($p['ia']) && $p['ia'] !== null ? (float)$p['ia'] : 25.0;
+
+            // G: Fascia esperto2 (1-8) convertita in 0-100; malus 25 se assente
+            $G = isset($p['fanta_fascia']) && $p['fanta_fascia'] !== null
+                ? (8.0 - (float)$p['fanta_fascia']) / 7.0 * 100.0
+                : 25.0;
 
             // C: correzione manuale like/dislike, clampata a +/-10
             $net = $like - $dislike;
             $C   = $this->clamp($net / 10.0, -1.0, 1.0) * 10.0;
 
-            $score           = $this->clamp(0.25 * $A + 0.35 * $B + 0.30 * $F + $C, 0.0, 100.0);
+            $score           = $this->clamp(0.20 * $A + 0.30 * $B + 0.20 * $F + 0.15 * $E + 0.15 * $G + $C, 0.0, 100.0);
             $results[$extId] = round($score, 2);
         }
 
@@ -96,7 +104,7 @@ class AppetibilityCalculator
             $season = $this->latestSeason();
         }
 
-        $listone = FantaListone::select('external_id', 'ruolo', 'fvm', 'like', 'dislike', 'fanta_index')->get();
+        $listone = FantaListone::select('external_id', 'ruolo', 'fvm', 'like', 'dislike', 'fanta_index', 'ia', 'fanta_fascia')->get();
         $stats   = FantaPlayerStats::where('season', $season)
             ->select('external_id', 'pv', 'mv', 'fm', 'gf', 'gs', 'rp', 'ass', 'amm')
             ->get()
@@ -106,19 +114,21 @@ class AppetibilityCalculator
         foreach ($listone as $player) {
             $st = $stats->get($player->external_id);
             $byRole[$player->ruolo][] = [
-                'external_id' => $player->external_id,
-                'fvm'         => $player->fvm,
-                'like'        => $player->like ?? 0,
-                'dislike'     => $player->dislike ?? 0,
-                'fanta_index' => $player->fanta_index,
-                'pv'          => $st ? $st->pv : null,
-                'mv'          => $st ? $st->mv : null,
-                'fm'          => $st ? $st->fm : null,
-                'gf'          => $st ? $st->gf : null,
-                'gs'          => $st ? $st->gs : null,
-                'rp'          => $st ? $st->rp : null,
-                'ass'         => $st ? $st->ass : null,
-                'amm'         => $st ? $st->amm : null,
+                'external_id'  => $player->external_id,
+                'fvm'          => $player->fvm,
+                'like'         => $player->like ?? 0,
+                'dislike'      => $player->dislike ?? 0,
+                'fanta_index'  => $player->fanta_index,
+                'ia'           => $player->ia,
+                'fanta_fascia' => $player->fanta_fascia,
+                'pv'           => $st ? $st->pv : null,
+                'mv'           => $st ? $st->mv : null,
+                'fm'           => $st ? $st->fm : null,
+                'gf'           => $st ? $st->gf : null,
+                'gs'           => $st ? $st->gs : null,
+                'rp'           => $st ? $st->rp : null,
+                'ass'          => $st ? $st->ass : null,
+                'amm'          => $st ? $st->amm : null,
             ];
         }
 

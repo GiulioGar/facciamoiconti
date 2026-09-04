@@ -15,18 +15,18 @@ class AppetibilityCalculatorTest extends TestCase
         $this->calc = new AppetibilityCalculator();
     }
 
-    // 1. Top consolidato: FVM alto + gol/assist alti + tante presenze → score >70, ranking corretto
+    // 1. Top consolidato: FVM alto + gol/assist alti + tante presenze + IA alta + fascia top → score >70, ranking corretto
     public function test_top_consolidato_scores_high_and_ranked_correctly(): void
     {
         $players = [
-            ['external_id' => 1, 'fvm' => 100, 'pv' => 38, 'gf' => 15, 'ass' => 5, 'mv' => 7.80, 'like' => 0, 'dislike' => 0],
-            ['external_id' => 2, 'fvm' => 50,  'pv' => 38, 'gf' => 5,  'ass' => 2, 'mv' => 5.50, 'like' => 0, 'dislike' => 0],
-            ['external_id' => 3, 'fvm' => 20,  'pv' => 38, 'gf' => 1,  'ass' => 0, 'mv' => 4.00, 'like' => 0, 'dislike' => 0],
+            ['external_id' => 1, 'fvm' => 100, 'pv' => 38, 'gf' => 15, 'ass' => 5, 'mv' => 7.80, 'like' => 0, 'dislike' => 0, 'ia' => 90, 'fanta_fascia' => 1],
+            ['external_id' => 2, 'fvm' => 50,  'pv' => 38, 'gf' => 5,  'ass' => 2, 'mv' => 5.50, 'like' => 0, 'dislike' => 0, 'ia' => 60, 'fanta_fascia' => 4],
+            ['external_id' => 3, 'fvm' => 20,  'pv' => 38, 'gf' => 1,  'ass' => 0, 'mv' => 4.00, 'like' => 0, 'dislike' => 0, 'ia' => null, 'fanta_fascia' => null],
         ];
 
         $scores = $this->calc->computeForRole($players, 'A');
 
-        $this->assertGreaterThan(70, $scores[1], 'Top consolidato deve avere score > 70');
+        $this->assertGreaterThan(70, $scores[1], 'Top consolidato (con IA e fascia) deve avere score > 70');
         $this->assertGreaterThan($scores[2], $scores[1], 'Top player > mid player');
         $this->assertGreaterThan($scores[3], $scores[2], 'Mid player > bottom player');
     }
