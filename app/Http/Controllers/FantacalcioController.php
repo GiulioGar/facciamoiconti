@@ -1276,6 +1276,66 @@ private function loadAssignedByIndex(): array
         return back()->with('success', "Fantagoat import: aggiornati {$updated}, trasferiti {$transferred}, non trovati {$notFound}.");
     }
 
+    // --- IMPORT XLSX esperto2 (titolarita media + fanta_fascia) ---
+    public function esperto2Import(Request $request)
+    {
+        $request->validate(['xlsx' => ['required', 'file', 'mimes:xlsx,xls', 'max:20480']]);
+
+        $path   = $request->file('xlsx')->getRealPath();
+        $reader = \OpenSpout\Reader\Common\Creator\ReaderFactory::createFromType('xlsx');
+        $reader->open($path);
+
+        $rows = [];
+        foreach ($reader->getSheetIterator() as $sheet) {
+            foreach ($sheet->getRowIterator() as $row) {
+                $rows[] = $row->toArray();
+            }
+            break;
+        }
+        $reader->close();
+
+        $data = array_slice($rows, 1);
+
+        $listone = FantaListone::select(['id', 'external_id', 'titolare'])
+            ->get()
+            ->keyBy('external_id');
+
+        $updated  = 0;
+        $skipped  = 0;
+        $notFound = 0;
+
+        DB::beginTransaction();
+        try {
+            foreach ($data as $row) {
+                $extId   = isset($row[0]) && $row[0] !== '' ? (int) $row[0] : null;
+                $titRaw  = isset($row[5]) && $row[5] !== '' ? (int) $row[5] : null;
+                $fasciaRaw = isset($row[4]) && $row[4] !== '' ? (int) $row[4] : null;
+
+                if ($extId === null || $titRaw === null) { $skipped++; continue; }
+                if ($titRaw < 1 || $titRaw > 5)         { $skipped++; continue; }
+                if (!$listone->has($extId))              { $notFound++; continue; }
+
+                $player  = $listone->get($extId);
+                $titNorm = $titRaw * 20;
+                $existing = $player->titolare !== null ? (int) $player->titolare : null;
+                $newTit  = $existing !== null ? (int) round(($existing + $titNorm) / 2) : $titNorm;
+
+                FantaListone::where('id', $player->id)->update([
+                    'titolare'     => $newTit,
+                    'fanta_fascia' => ($fasciaRaw >= 1 && $fasciaRaw <= 8) ? $fasciaRaw : null,
+                    'updated_at'   => now(),
+                ]);
+                $updated++;
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return back()->with('error', 'Errore import esperto2: ' . $e->getMessage());
+        }
+
+        return back()->with('success', "Esperto2 import: aggiornati {$updated}, senza valutazione {$skipped}, non trovati {$notFound}.");
+    }
+
 
 }
 

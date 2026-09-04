@@ -102,6 +102,13 @@
             <i class="bi bi-lightning-fill me-1"></i> Import Goat
           </button>
         </form>
+        <form action="{{ route('fantacalcio.esperto2.import') }}" method="POST" enctype="multipart/form-data" class="m-0 ms-2 d-flex align-items-center gap-1">
+          @csrf
+          <input type="file" name="xlsx" accept=".xlsx,.xls" class="form-control form-control-sm" style="max-width:160px" required>
+          <button type="submit" class="btn btn-outline-info btn-sm text-nowrap">
+            <i class="bi bi-person-check me-1"></i> Import Esperto2
+          </button>
+        </form>
       </div>
     </div>
 
