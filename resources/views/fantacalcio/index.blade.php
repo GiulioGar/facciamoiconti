@@ -109,6 +109,14 @@
             <i class="bi bi-people-fill me-1"></i> Import GE
           </button>
         </form>
+        <form action="{{ route('fantacalcio.stats.import') }}" method="POST" enctype="multipart/form-data" class="m-0 ms-2 d-flex align-items-center gap-1">
+          @csrf
+          <input type="file" name="xlsx" accept=".xlsx,.xls" class="form-control form-control-sm" style="max-width:130px" required>
+          <input type="text" name="season" value="2026-27" class="form-control form-control-sm" style="max-width:70px" required placeholder="2026-27">
+          <button type="submit" class="btn btn-outline-success btn-sm text-nowrap">
+            <i class="bi bi-bar-chart-fill me-1"></i> Import Stats
+          </button>
+        </form>
       </div>
     </div>
 
@@ -153,6 +161,8 @@
               <th>Squadra</th>
               <th class="text-end">FVM</th>
               <th class="text-center">Titolare</th>
+              <th class="text-center">PV</th>
+              <th class="text-end">FM</th>
               <th class="text-center">Score</th>
               <th class="text-center">Level</th>
               <th class="text-center">IA</th>
@@ -214,7 +224,7 @@
     `;
   }
 
-  const ROW_ID_IDX = 12;
+  const ROW_ID_IDX = 14;
 
   const table = $('#listone-table').DataTable({
     processing: true,
@@ -224,8 +234,8 @@
     lengthMenu: [10, 25, 50, 100],
     pageLength: 25,
     order: [
-      [6, 'desc'],
-      [10, 'desc'],
+      [8, 'desc'],
+      [12, 'desc'],
       [2, 'asc']
     ],
     ajax: {
@@ -244,21 +254,23 @@
       { data: 3 },
       { data: 4,  className: 'text-end' },
       { data: 5,  className: 'text-center', orderable: false, render: (d, type, row) => renderTitolarePill(d, row) },
-      { data: 6,  className: 'text-center fw-semibold', render: d => d !== null ? d : '-' },
-      { data: 7,  className: 'text-center', render: (d, type, row) => {
+      { data: 6,  className: 'text-center text-muted', render: d => d !== null ? d : '-' },
+      { data: 7,  className: 'text-end fw-semibold', render: d => d !== null ? d : '-' },
+      { data: 8,  className: 'text-center fw-semibold', render: d => d !== null ? d : '-' },
+      { data: 9,  className: 'text-center', render: (d, type, row) => {
           const lvl = parseInt(d ?? 3, 10);
           const id = row[ROW_ID_IDX];
           const label = {1:'Scarso',2:'Basso',3:'Medio',4:'Ottimo',5:'TOP'}[lvl] || 'Medio';
           const cls = {1:'secondary',2:'secondary',3:'info',4:'primary',5:'success'}[lvl] || 'info';
           return `<span class="badge bg-${cls} cell-level-edit" data-id="${id}" data-level="${lvl}" title="Clic per modificare">${lvl} - ${label}</span>`;
       }},
-      { data: 8,  className: 'text-center fw-semibold', render: d => d !== null ? d : 'NV' },
-      { data: 9,  className: 'text-center fw-semibold', render: d => d !== null ? d : 'NV' },
-      { data: 10, className: 'text-center', orderable: false, render: (d, type, row) => {
+      { data: 10, className: 'text-center fw-semibold', render: d => d !== null ? d : 'NV' },
+      { data: 11, className: 'text-center fw-semibold', render: d => d !== null ? d : 'NV' },
+      { data: 12, className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-like" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-up me-1"></i><strong>${d}</strong></span>`;
       }},
-      { data: 11, className: 'text-center', orderable: false, render: (d, type, row) => {
+      { data: 13, className: 'text-center', orderable: false, render: (d, type, row) => {
           const id = row[ROW_ID_IDX];
           return `<span class="icon-dislike" data-id="${id}" title="Click = +1, Alt/Shift = -1" role="button"><i class="bi bi-hand-thumbs-down me-1"></i><strong>${d}</strong></span>`;
       }},
@@ -284,8 +296,9 @@
       ]
     },
     columnDefs: [
-      { responsivePriority: 1,   targets: [2, 6, 7] },
-      { responsivePriority: 2,   targets: [0, 1, 8, 9, 10, 11] },
+      { responsivePriority: 1,   targets: [2, 8, 9] },
+      { responsivePriority: 2,   targets: [0, 1, 10, 11, 12, 13] },
+      { responsivePriority: 3,   targets: [6, 7] },
       { responsivePriority: 50,  targets: [3, 5] },
       { responsivePriority: 100, targets: [4] }
     ],

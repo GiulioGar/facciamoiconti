@@ -11,7 +11,7 @@ use App\Models\FantaRosa;
 use App\Models\FantaBudgetState;
 use App\Services\Fantacalcio\RosaBudgetCalculator;
 use App\Services\Fantacalcio\RosaStatusEvaluator;
-use App\Services\Fantacalcio\AppetibilityCalculator;
+use App\Services\Fantacalcio\AppetibilityCalculatorV2 as AppetibilityCalculator;
 use App\Models\FantaPlayerStats;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
@@ -350,21 +350,31 @@ public function listoneData(Request $request)
 
     $recordsTotal    = \App\Models\FantaListone::count();
     $recordsFiltered = (clone $query)->count();
-    $order           = $request->input('order', []);
 
+    $latestSeason = \App\Models\FantaPlayerStats::max('season') ?: '2025-26';
+    $maxPv = (int) (\App\Models\FantaPlayerStats::where('season', $latestSeason)->max('pv') ?: 3);
+
+    $query->leftJoin('fanta_player_stats as fps', function ($join) use ($latestSeason) {
+        $join->on('fps.external_id', '=', 'fanta_listone.external_id')
+             ->where('fps.season', '=', $latestSeason);
+    });
+
+    $order   = $request->input('order', []);
     $columns = [
-        0  => 'stato',
-        1  => 'ruolo',
-        2  => 'nome',
-        3  => 'squadra',
-        4  => 'fvm',
-        5  => 'titolare',
-        6  => 'score',
-        7  => 'level',
-        8  => 'ia',
-        9  => 'ge_index',
-        10 => DB::raw($likesSigned),
-        11 => DB::raw($dislikesSigned),
+        0  => 'fanta_listone.stato',
+        1  => 'fanta_listone.ruolo',
+        2  => 'fanta_listone.nome',
+        3  => 'fanta_listone.squadra',
+        4  => 'fanta_listone.fvm',
+        5  => 'fanta_listone.titolare',
+        6  => 'fps.pv',
+        7  => 'fps.fm',
+        8  => 'fanta_listone.score',
+        9  => 'fanta_listone.level',
+        10 => 'fanta_listone.ia',
+        11 => 'fanta_listone.ge_index',
+        12 => DB::raw($likesSigned),
+        13 => DB::raw($dislikesSigned),
     ];
 
     if (!empty($order)) {
@@ -380,46 +390,52 @@ public function listoneData(Request $request)
             }
         }
     } else {
-        $query->orderBy('score', 'desc')
+        $query->orderBy('fanta_listone.score', 'desc')
+            ->orderBy('fanta_listone.ia', 'desc')
+            ->orderBy('fanta_listone.ge_index', 'desc')
             ->orderByRaw($likesSigned . ' DESC')
-            ->orderBy('nome', 'asc');
+            ->orderBy('fanta_listone.nome', 'asc');
     }
 
     $rows = $query
         ->skip($start)
         ->take($length)
         ->select([
-            'id',
-            'ruolo',
-            'nome',
-            'squadra',
-            'fvm',
-            'titolare',
-            'stato',
-            DB::raw('`like` as likes'),
-            DB::raw('`dislike` as dislikes'),
-            'score',
-            'level',
-            'ia',
-            'ge_index',
+            'fanta_listone.id',
+            'fanta_listone.ruolo',
+            'fanta_listone.nome',
+            'fanta_listone.squadra',
+            'fanta_listone.fvm',
+            'fanta_listone.titolare',
+            'fanta_listone.stato',
+            DB::raw('`fanta_listone`.`like` as likes'),
+            DB::raw('`fanta_listone`.`dislike` as dislikes'),
+            'fanta_listone.score',
+            'fanta_listone.level',
+            'fanta_listone.ia',
+            'fanta_listone.ge_index',
+            'fps.pv as current_pv',
+            'fps.fm as current_fm',
         ])
         ->get();
 
-    $data = $rows->map(function ($r) {
+    $data = $rows->map(function ($r) use ($maxPv) {
         return [
-            (int) $r->stato,                                                          // 0  - Asta
-            $r->ruolo,                                                                // 1  - Ruolo
-            $r->nome,                                                                 // 2  - Nome
-            $r->squadra,                                                              // 3  - Squadra
-            (string) (int) round($r->fvm),                                            // 4  - FVM
-            $r->titolare === null ? null : (int) $r->titolare,                        // 5  - Titolare
-            $r->score !== null ? number_format((float) $r->score, 2, '.', '') : null, // 6  - Score
-            (int) ($r->level ?? 3),                                                   // 7  - Level
-            $r->ia !== null ? (int) $r->ia : null,                                    // 8  - IA
-            $r->ge_index !== null ? (int) $r->ge_index : null,                        // 9  - GE Index
-            (int) $r->likes,                                                          // 10 - Like
-            (int) $r->dislikes,                                                       // 11 - Dislike
-            (int) $r->id,                                                             // 12 - hidden id (ROW_ID_IDX)
+            (int) $r->stato,                                                               // 0  - Asta
+            $r->ruolo,                                                                     // 1  - Ruolo
+            $r->nome,                                                                      // 2  - Nome
+            $r->squadra,                                                                   // 3  - Squadra
+            (string) (int) round($r->fvm),                                                 // 4  - FVM
+            $r->titolare === null ? null : (int) $r->titolare,                             // 5  - Titolare
+            $r->current_pv !== null ? ((int) $r->current_pv . '/' . $maxPv) : null,       // 6  - PV (es. "2/3")
+            $r->current_fm !== null ? number_format((float) $r->current_fm, 2, '.', '') : null, // 7 - FM
+            $r->score !== null ? number_format((float) $r->score, 2, '.', '') : null,      // 8  - Score
+            (int) ($r->level ?? 3),                                                        // 9  - Level
+            $r->ia !== null ? (int) $r->ia : null,                                         // 10 - IA
+            $r->ge_index !== null ? (int) $r->ge_index : null,                             // 11 - GE Index
+            (int) $r->likes,                                                               // 12 - Like
+            (int) $r->dislikes,                                                            // 13 - Dislike
+            (int) $r->id,                                                                  // 14 - hidden id (ROW_ID_IDX)
         ];
     });
 

@@ -16,6 +16,7 @@ class AppetibilityCalculatorTest extends TestCase
     }
 
     // 1. Top consolidato: FVM alto + gol/assist alti + tante presenze + IA alta + GE alto → score >70, ranking corretto
+    // Formula: 0.15A + 0.20B + 0.15F + 0.25E + 0.25G + C
     public function test_top_consolidato_scores_high_and_ranked_correctly(): void
     {
         $players = [

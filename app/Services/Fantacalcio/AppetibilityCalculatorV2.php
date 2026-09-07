@@ -5,13 +5,9 @@ namespace App\Services\Fantacalcio;
 use App\Models\FantaListone;
 use App\Models\FantaPlayerStats;
 
-class AppetibilityCalculator
+class AppetibilityCalculatorV2
 {
     // Pesi per componente B per ruolo: [peso, invertire_percentile]
-    // P: punisce gol subiti/partita, premia rigori parati
-    // D: premia gol+assist, penalizza ammonizioni
-    // C: premia gol+assist con piu' peso ai gol
-    // A: domina il gol/partita (peso 0.60)
     private $roleWeights = [
         'P' => [
             'mv'    => [0.40, false],
@@ -79,16 +75,17 @@ class AppetibilityCalculator
             // F: fanta_index percentile nel ruolo (peso 0.10); fallback 50 se assente
             $F = $hasFi ? $this->percentileRank((float)$p['fanta_index'], $fiVals) : 50.0;
 
-            // E: Indice Appetibilita (IA) — peso 0.35; malus 25 se assente
+            // E: Indice Appetibilita IA (peso 0.35) — malus 25 se assente
             $E = isset($p['ia']) && $p['ia'] !== null ? (float)$p['ia'] : 25.0;
 
-            // G: Indice Gruppo Esperti (ge_index 0-100) — peso 0.35; malus 25 se assente
+            // G: Indice Gruppo Esperti ge_index (peso 0.35) — malus 25 se assente
             $G = isset($p['ge_index']) && $p['ge_index'] !== null ? (float)$p['ge_index'] : 25.0;
 
             // C: correzione manuale like/dislike, clampata a +/-10
             $net = $like - $dislike;
             $C   = $this->clamp($net / 10.0, -1.0, 1.0) * 10.0;
 
+            // Formula: 0.10*A + 0.10*B + 0.10*F + 0.35*E + 0.35*G + C
             $score           = $this->clamp(0.10 * $A + 0.10 * $B + 0.10 * $F + 0.35 * $E + 0.35 * $G + $C, 0.0, 100.0);
             $results[$extId] = round($score, 2);
         }
